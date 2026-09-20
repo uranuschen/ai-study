@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-learning"
+version = "0.1.0"
+description = "面向学习的企业 RAG 入库与问答"
+requires-python = ">=3.11"
+dependencies = [
+  "openai>=1.30,<4", "python-dotenv>=1,<2", "psycopg2-binary>=2.9,<3",
+  "sentence-transformers>=3,<4", "jieba>=0.42,<1", "rank-bm25>=0.2,<1",
+  "pypdf>=4,<7", "python-docx>=1,<2", "openpyxl>=3.1,<4"
+]
+
+[project.scripts]
+rag-study = "agent_learning.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

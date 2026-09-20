@@ -1,0 +1,17 @@
+[
+  {"id":"current-version","question":"一线城市出差住宿每晚最多报销多少元？","tenant":"acme","security":1,"module":"finance","expected_status":"answered","expected_documents":["FIN-TRAVEL"],"required_terms":["600"],"forbidden_terms":["900"]},
+  {"id":"other-tenant","question":"一线城市出差住宿每晚最多报销多少元？","tenant":"beta","security":1,"expected_status":"answered","expected_documents":["FIN-TRAVEL"],"required_terms":["900"],"forbidden_terms":["600"]},
+  {"id":"refund-status","question":"A1002 的退款到账了吗？","tenant":"acme","security":1,"expected_status":"answered","expected_documents":["ORDER-A1002","REFUND-R1001"],"required_terms":["12800"],"forbidden_terms":["77000"]},
+  {"id":"same-id-isolation","question":"A1002 的订单金额和状态是什么？","tenant":"beta","security":1,"expected_status":"answered","expected_documents":["ORDER-A1002"],"required_terms":["77000"],"forbidden_terms":["12800"]},
+  {"id":"refund-code","question":"R1002 为什么退款失败，下一步怎么办？","tenant":"acme","security":1,"expected_status":"answered","expected_documents":["REFUND-R1002"],"required_terms":["注销"],"forbidden_terms":[]},
+  {"id":"vpn-code","question":"VPN-403 是什么原因？","tenant":"acme","security":1,"expected_status":"answered","expected_documents":["IT-VPN"],"required_terms":["授权"],"forbidden_terms":[]},
+  {"id":"api-number","question":"API 每分钟最多能调用多少次？429 怎么处理？","tenant":"acme","security":1,"expected_status":"answered","expected_documents":["PRODUCT-API"],"required_terms":["600","Retry-After"],"forbidden_terms":[]},
+  {"id":"procurement-boundary","question":"采购金额刚好 3 万元需要三家报价吗？","tenant":"acme","security":1,"expected_status":"answered","expected_documents":["BUY-THREE"],"required_terms":["三家"],"forbidden_terms":[]},
+  {"id":"access-lifetime","question":"临时权限最长可以保留几天？","tenant":"acme","security":1,"expected_status":"answered","expected_documents":["IT-ACCESS"],"required_terms":["7"],"forbidden_terms":[]},
+  {"id":"secret-denied","question":"2027 年极光专项预算是多少？","tenant":"acme","security":1,"expected_status":"insufficient_evidence","expected_documents":[],"required_terms":["不知道"],"forbidden_terms":["860"]},
+  {"id":"secret-allowed","question":"2027 年极光专项预算是多少？","tenant":"acme","security":3,"expected_status":"answered","expected_documents":["FIN-BUDGET-SECRET"],"required_terms":["860"],"forbidden_terms":[]},
+  {"id":"unknown-entity","question":"A9999 的退款金额是多少？","tenant":"acme","security":1,"expected_status":"insufficient_evidence","expected_documents":[],"required_terms":["不知道"],"forbidden_terms":[]},
+  {"id":"absent-fact","question":"公司 2030 年营业收入是多少？","tenant":"acme","security":1,"expected_status":"insufficient_evidence","expected_documents":[],"required_terms":["不知道"],"forbidden_terms":[]},
+  {"id":"no-invented-nda","question":"公司所有保密协议统一保密多少年？","tenant":"acme","security":1,"expected_status":"insufficient_evidence","expected_documents":[],"required_terms":["不知道"],"forbidden_terms":[]},
+  {"id":"tag-and","question":"一线城市住宿报销上限是多少？","tenant":"acme","security":1,"tags":["module:finance-travel","region:cn"],"expected_status":"answered","expected_documents":["FIN-TRAVEL"],"required_terms":["600"],"forbidden_terms":["900"]}
+]

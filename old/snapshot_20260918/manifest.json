@@ -1,0 +1,282 @@
+[
+  {
+    "path": "python_basic/lx.py",
+    "sha256": "16f54b8881520267750be92fccd2f1882b3f892ab837664eed8b9055fcef2402"
+  },
+  {
+    "path": "python_basic/04_list_loop.py",
+    "sha256": "3f89e32e87e271c3ff7048ca7841735e8d2915bdfe228fb94bbc5590eea2f820"
+  },
+  {
+    "path": "python_basic/http_test.py",
+    "sha256": "945977ec9b54f198fe1e688c00b8c0d2760e7a1f1dd73ff3a2b34e5fb6aef5c0"
+  },
+  {
+    "path": "python_basic/class_05_find_order.py",
+    "sha256": "a41bb6f24bbf36d53f81bcbeafa7542c2920d382743878330ba428bab1cbb64f"
+  },
+  {
+    "path": "python_basic/03_list.py",
+    "sha256": "91fca1775335d7f2533ec380059aa4e8c71d5c5be76fa7ed6ea996c499e952d6"
+  },
+  {
+    "path": "python_basic/09_word_count.py",
+    "sha256": "68c5903e875cda5f43bc2990c3ba6a75210763a6ceee9924bdffb6865ac6e516"
+  },
+  {
+    "path": "python_basic/06_dict_loop.py",
+    "sha256": "3b11972b3358935c0669d1a239cc681bee39b6f540efa4cfa8f866babe9b94e8"
+  },
+  {
+    "path": "python_basic/class_06_delete_order.py",
+    "sha256": "83f8293e59e07f3a36a967f14ed105fcd18f42dabc7c9ccfd8c71bd00021d6ed"
+  },
+  {
+    "path": "python_basic/05_dict.py",
+    "sha256": "6ddca9cd543fa33264d0018780bc20ea1a02a2cf822863e137778001fe6a32f2"
+  },
+  {
+    "path": "python_basic/class_01_order.py",
+    "sha256": "d711d7d0cedff6fe642c23dd7e3cd2720cd0fa200cc5a57d0ac5ced9fc247b21"
+  },
+  {
+    "path": "python_basic/02_string.py",
+    "sha256": "ab04d6e286fce0ddc1f282f457631f048b3fd6fc492722b3e157307cbc900453"
+  },
+  {
+    "path": "python_basic/07_set.py",
+    "sha256": "f9cb943283d637d5177daf3a6537f2d8f0551aed024a10d66dd161746e86e767"
+  },
+  {
+    "path": "python_basic/class_08_update_order.py",
+    "sha256": "a9454f880f6ff72ca1fbc0975eadb63c723a375d50675a23544f6df565809f22"
+  },
+  {
+    "path": "python_basic/08_score.py",
+    "sha256": "ff77ba54536fdad8795eaa173ffc2272d4e085312ca03e420eb5d79137a5b16d"
+  },
+  {
+    "path": "python_basic/class_02_order_service.py",
+    "sha256": "68316b9ba288c84b4dbbf144fef2aeea4cd72ebe8f75d96700730668128dcf51"
+  },
+  {
+    "path": "python_basic/10_11.py",
+    "sha256": "5341e759ecdb41d9a78233888065910b1482fd5104d90fa9bb9a9a4a9f0db6f7"
+  },
+  {
+    "path": "python_basic/class_07_total_price.py",
+    "sha256": "f3d18ae8c734115dea280309c4f95184bdfbc1d9bb3845e717b31816daf3138c"
+  },
+  {
+    "path": "python_basic/01_variable.py",
+    "sha256": "a68183ffbde8f39904065106236e89970b239c4ac19a9cd52b9c6442b5a00d6e"
+  },
+  {
+    "path": "python_basic/order_api/orders.json",
+    "sha256": "5e39a6bc0bf9a19dd5809ab90c5da016da3b7ff7dcbaaf036d953665c94cd843"
+  },
+  {
+    "path": "python_basic/order_api/main_format.py",
+    "sha256": "2c1e01df2b8a15c78f24087787c9995f9303f923d683e331c9222e490051e5c1"
+  },
+  {
+    "path": "python_basic/order_api/history_chat.py",
+    "sha256": "6b24f93dbd0c4139c7239106fc546460e5321d28559ceaa64d3fb794f7f182ca"
+  },
+  {
+    "path": "python_basic/order_api/main_fast.py",
+    "sha256": "aeb9dfd351c263f67f5da9d77f03bead34b6249fcf72a084691d47f56bcf8e25"
+  },
+  {
+    "path": "python_basic/llm/chat_memory.py",
+    "sha256": "40b6547fce162fbe793a6156ec7c5874f4ce6a4b38d30a420662a1892578a56d"
+  },
+  {
+    "path": "python_basic/llm/java_exception_analyzer.py",
+    "sha256": "c15943a7fe9f5c126b3d226b61c007de9be584206fb1347ab8f224fdd285a908"
+  },
+  {
+    "path": "python_basic/llm/llm_client.py",
+    "sha256": "ab5ff0192f7bceb6c60e4990900f127e31ecabe433470f97ed0d4c43748c0c70"
+  },
+  {
+    "path": "python_basic/llm/agent.py",
+    "sha256": "296548660d95999ce678b80fe48ce3ea49ee92db932044b6ae462493a2402e58"
+  },
+  {
+    "path": "python_basic/llm/main.py",
+    "sha256": "7b314fea9b3c571a1eb7741de87a338736ed2b3bbec74ef5ebb64d4d8bc5be8a"
+  },
+  {
+    "path": "python_basic/rag/pdf_chunk_test.py",
+    "sha256": "136436af57e8e77e6c5d985468b3866d33dc5f4653f4ff1f4ded5cc6614c7524"
+  },
+  {
+    "path": "python_basic/rag/db.py",
+    "sha256": "cb60756836f57f0bec3c9afcfc5bbe8fc752e34ce97ef29f59873eb21a692b3a"
+  },
+  {
+    "path": "python_basic/rag/vector_search_test.py",
+    "sha256": "8adb4ca84706e54668c9fa9daaeb42a56cb801081aff6c435791c0ba29c41fcd"
+  },
+  {
+    "path": "python_basic/rag/document_loader_test.py",
+    "sha256": "efbda24e94d689cba82c44103fd83ec2b076ce69a8d115ba141f48dfc68f1120"
+  },
+  {
+    "path": "python_basic/rag/document_loader_excel_test.py",
+    "sha256": "ac33f8324680e5e8526c6d34842864484a7a6a86b39bfef5c9f027168a1ec739"
+  },
+  {
+    "path": "python_basic/rag/hybird_test.py",
+    "sha256": "67928085e4b467a7cc6f24952a252b10e61e4258466d8b28d2dcc076a9a0c412"
+  },
+  {
+    "path": "python_basic/rag/document_ingest_pipeline.py",
+    "sha256": "3b867b913ad64f2934e7665f26d7df95eb000d374dd26f4c532945ee198f8b48"
+  },
+  {
+    "path": "python_basic/rag/prefilter_test.py",
+    "sha256": "2b6824b1fd15e5a0b67cf92bbc9683959ca245e97d83196231a76187b469b604"
+  },
+  {
+    "path": "python_basic/rag/chunk_overlap_test.py",
+    "sha256": "d86706b6277c222904bc91d1bef0194791774258b383e1ff77c1287019a565f7"
+  },
+  {
+    "path": "python_basic/rag/pdf_loader_test.py",
+    "sha256": "4142420873081d958444399cb8fe7a1648bf3537e778b4b5d09a281b17da84c7"
+  },
+  {
+    "path": "python_basic/rag/chunk_search_test.py",
+    "sha256": "5a972770d9e494129a6ecb33abd7b2a3af45445818ccd35eb3c286e59375b850"
+  },
+  {
+    "path": "python_basic/rag/chunk_test.py",
+    "sha256": "caadd3caf08d8f3ff7c8eca9b72e928984ad138d13cbe4d369f823f256c2b0d6"
+  },
+  {
+    "path": "python_basic/rag/embedding_search.py",
+    "sha256": "23d3c34aef33c141149617a6d266f08a01bdaf36d85b614f919ceb51486523de"
+  },
+  {
+    "path": "python_basic/rag/test_pgvector.py",
+    "sha256": "cf1b6604f2454e6ed8e043646ec59882e9ed842c14e21659d1f7f016bfb92b53"
+  },
+  {
+    "path": "python_basic/rag/embedding_insert.py",
+    "sha256": "9e56a120d8807e2dea96e2f1770764dcfcf0a75b1176a185667a5c8110e39f63"
+  },
+  {
+    "path": "python_basic/rag/document_loader_word_test.py",
+    "sha256": "2156cc1cbb7e7a6b427bf2bc3a750196093c9c67f6def5f8c1039d6f635c47d9"
+  },
+  {
+    "path": "python_basic/rag/data/rag_excel_test.xlsx",
+    "sha256": "233b28b8382c39b2feef464606e6aa6a112e9de9daa8cfdeb7257accd106fbf9"
+  },
+  {
+    "path": "python_basic/rag/data/refund.md",
+    "sha256": "7843d27a76454e2c7ad31232ead741e11c32fe279afc1be9cef004b1c9a444a8"
+  },
+  {
+    "path": "python_basic/rag/data/refund_test.docx",
+    "sha256": "ed378a31f16c5d37092d1e8dc9156ca2ff3101dea9e5ca3b1b261c7410c866d8"
+  },
+  {
+    "path": "python_basic/rag/data/refund_test.pdf",
+    "sha256": "08685d8cf272a1a6027d5c3908a4a29ef39dcf77a2fe6f4d7fcfff9356d78ed0"
+  },
+  {
+    "path": "python_basic/toolcalling/mian_mysql.py",
+    "sha256": "1331730982227264a8e0bc679771f4e90284c203f05d67ee2a69bdda078fff8d"
+  },
+  {
+    "path": "python_basic/toolcalling/db.py",
+    "sha256": "2121b739e6302a45da1de97a5e2be6ab475a5ccf16a6032363b167cd135afe20"
+  },
+  {
+    "path": "python_basic/toolcalling/tools.py",
+    "sha256": "4f9b69d75bc8b052e6fa8cd1dfd6c1c603070400c2ef00c805aeb8ce0fefc2ef"
+  },
+  {
+    "path": "python_basic/toolcalling/README.md",
+    "sha256": "1508a8d82fc8958fe2aa25c719efc0e24d7ebfbcd225c63f0da7327da78e9355"
+  },
+  {
+    "path": "python_basic/toolcalling/main_01.py",
+    "sha256": "89244e2b5c596e5668f9c14ebaac8cae04717bc3f6df34850e9aef71a404cd46"
+  },
+  {
+    "path": "python_basic/order_console/main_1.py",
+    "sha256": "89a594898d79d00e18d370fae1f4fee9e3a27be2fbe609fa48a026f9e2b67705"
+  },
+  {
+    "path": "python_basic/order_console/order_exception.py",
+    "sha256": "23e659133e907b7684eaf21e7a1e16d1b39e3145a182cea628a56d556519cc2f"
+  },
+  {
+    "path": "python_basic/order_console/exception_04.py",
+    "sha256": "508e473c7cb1c6169858932d51178e1c5850d02ba541ea90a0fb12a9c0a50c23"
+  },
+  {
+    "path": "python_basic/order_console/order_service.py",
+    "sha256": "eb244ea812f09bfdb7a1049b193ffab23b2c04eaa24a9389d6b05b4b3745bcc3"
+  },
+  {
+    "path": "python_basic/order_console/order.py",
+    "sha256": "f6887a00615a01f9b07bb36286e92ea7d8ed6158c59ad1ab1bd001c0c0201c06"
+  },
+  {
+    "path": "python_basic/order_console/exception_01.py",
+    "sha256": "6d19aafcd1b4f82daa089fffe24f828176a4abfd73c1d7abf78551706a984060"
+  },
+  {
+    "path": "python_basic/order_console/exception_02.py",
+    "sha256": "fabdc72660732428b7c0806b133c49871fc2e8d1bd5da59f81f2ec9949695293"
+  },
+  {
+    "path": "python_basic/order_console/exception_03.py",
+    "sha256": "9fd3ba0c27471405ce93dc28ecdccdb17f367f51b286d83b75092d5fcf4f4503"
+  },
+  {
+    "path": "python_basic/order_console/product.py",
+    "sha256": "f96bfb992073cf970a5c9a4dbf7cee2280b2f9cb9c474eae57e5ed41dc49a9de"
+  },
+  {
+    "path": "python_basic/order_console/order_errors.py",
+    "sha256": "23e659133e907b7684eaf21e7a1e16d1b39e3145a182cea628a56d556519cc2f"
+  },
+  {
+    "path": "python_basic/order_console/main.py",
+    "sha256": "7c95eda0f288962888391326adc532f961497e900fd06e3748ee638e9988dddb"
+  },
+  {
+    "path": "python_basic/order_console/order_json/orders.json",
+    "sha256": "2104be3d50b7f60ce47c5e3310829b3b75edcb21865c7ce34d753722fa0bad84"
+  },
+  {
+    "path": "python_basic/order_console/order_json/order_service.py",
+    "sha256": "a2c981719e5fb9790dce302b7d8d1dddb6f42e9a40a575621b26d022bd067b1e"
+  },
+  {
+    "path": "python_basic/order_console/order_json/order_file.py",
+    "sha256": "a6bcaac89a44a73330a93ef46956b5a080d22e77ad0bcaff6397f18a2dd3b243"
+  },
+  {
+    "path": "python_basic/order_console/order_json/main.py",
+    "sha256": "9c651cd527d2aa367ee9cd6ce27d70bcd6f552af107f31eecca3ffc2749a22e8"
+  },
+  {
+    "path": "rag/pgvector/compose.yaml",
+    "sha256": "5c45d0936085ea6ea97921b961c7aafad385b84e730db5cb3cec1cd9a94b892c"
+  },
+  {
+    "path": "requirements.txt",
+    "sha256": "d8a870bf99e56158a47cc009324dc8efe53e549208aeeab6c6956cf4eccfd847"
+  },
+  {
+    "path": ".gitignore",
+    "sha256": "8f4103fa394a03c04d299b1b363df77e0526efd8259dbf02c140213ec511776d"
+  }
+]
