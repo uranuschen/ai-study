@@ -1,4 +1,5 @@
 import math
+from agent_learning.core.config import Settings
 from agent_learning.core.models import Hit
 
 
@@ -13,10 +14,14 @@ def validate_vectors(vectors, count, dimension):
     # 逐向量校验。
     for vector in vectors:
         # 检查维度及 NaN。
+        # 遍历 vector → 每次取出一个 value → 执行 math.isfinite(value)。
+        # math.isfinite(value)是检查是否有限数，不是无穷大/小和无效数字
+        # 比较len是否512维度；然后看512个向量里是否是正常数字，查看边界
         if len(vector) != dimension or not all(math.isfinite(value) for value in vector):
             # 拒绝无效向量。
             raise ValueError("Embedding 维度不符或包含非有限值")
-        # 余弦距离要求非零向量。
+        # 余弦距离要求非零向量。 
+        # 这里2个乘法 负数也会是整数，这里防止的是0，因为0没有角度
         if sum(value * value for value in vector) <= 0:
             # 不使用占位向量。
             raise ValueError("Embedding 不能是全零向量")
@@ -28,7 +33,7 @@ class LocalEmbedder:
     # 方法功能：保存模型名、维度和本地缓存选项，初始化时不加载模型。
     # 输入：Settings 配置；输出：完成初始化的实例。
     # 仅保存配置。
-    def __init__(self, settings):
+    def __init__(self, settings: Settings) -> None:
         # 记录向量身份。
         self.model_name, self.dimension = settings.embedding_model, settings.embedding_dim
         # 首次编码时才加载。
@@ -37,7 +42,7 @@ class LocalEmbedder:
     # 方法功能：延迟加载文档向量模型，批量编码文本并校验输出。
     # 输入：文本字符串列表；输出：与输入一一对应的浮点向量列表。
     # 文档不添加 query 指令。
-    def passages(self, texts):
+    def passages(self, texts: list[str]) -> list[list[float]]:
         # 模型只加载一次。
         if self._model is None:
             from sentence_transformers import SentenceTransformer
@@ -53,7 +58,7 @@ class LocalEmbedder:
     # 方法功能：按模型要求添加查询前缀，复用文档编码能力生成问题向量。
     # 输入：用户问题字符串；输出：一个查询向量。
     # BGE 中文检索建议使用查询指令。
-    def query(self, text):
+    def query(self, text: str) -> list[float]:
         # 不向其他模型强加指令。
         prefix = "为这个句子生成表示以用于检索相关文章：" if "bge-small-zh" in self.model_name else ""
         # 复用编码与校验。

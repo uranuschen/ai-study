@@ -1,5 +1,8 @@
 import re
-from agent_learning.core.models import Hit
+from agent_learning.core.config import Settings
+from agent_learning.core.models import Hit, SearchFilter
+from agent_learning.core.providers import LocalEmbedder
+from agent_learning.rag.repository import PostgresRepository
 
 
 # 方法功能：BM25 与查询共用中文分词规则。
@@ -68,7 +71,7 @@ class BM25Retriever:
     # 方法功能：像 old/hybird_test.py 一样，使用 BM25Okapi 给文档打分。
     # 输入：问题、授权语料和 K；输出：按关键词分数排序的候选。
     # 不再手写 BM25 公式。
-    def search(self, query, corpus, k):
+    def search(self, query: str, corpus: list[Hit], k: int) -> list[Hit]:
         from rank_bm25 import BM25Okapi
         # 空语料不建立索引。
         if not corpus:
@@ -121,7 +124,7 @@ class ResultFusion:
     # 方法功能：保留各路首次排名，按 ID 去重并累计融合得分。
     # 输入：向量候选、关键词候选和候选上限 K；输出：统一排序后的前 K 个 Hit。
     # ID 去重不丢失两路分数。
-    def merge(self, vector_hits, keyword_hits, k):
+    def merge(self, vector_hits: list[Hit], keyword_hits: list[Hit], k: int) -> list[Hit]:
         # 以子块 ID 唯一标识。
         merged = {}
         # 分别处理向量与关键词列表。
@@ -205,10 +208,20 @@ class ResultFusion:
 class HybridRetriever:
     # 方法功能：注入数据仓储和向量模型，并创建关键词检索与融合组件。
     # 输入：repository、embedder、settings 和可选 bm25；输出：完成初始化的混合检索器。
-    # 组件均可替换。
-    def __init__(self, repository, embedder, settings, bm25=None):
-        # 保存依赖。
-        self.repository, self.embedder, self.settings = repository, embedder, settings
+    # 标明组件类型，方便从调用处跳转到具体方法。
+    def __init__(
+        self,
+        repository: PostgresRepository,
+        embedder: LocalEmbedder,
+        settings: Settings,
+        bm25: BM25Retriever | None = None,
+    ) -> None:
+        # 保存数据库操作对象，可跳转到 vector_search 和 lexical_corpus。
+        self.repository = repository
+        # 保存向量模型对象，可跳转到 query。
+        self.embedder = embedder
+        # 保存召回数量、阈值和融合参数。
+        self.settings = settings
         # 默认中文 BM25。
         self.bm25 = bm25 or BM25Retriever()
         # 构造融合器。
@@ -217,10 +230,12 @@ class HybridRetriever:
     # 方法功能：用同一过滤器执行两路召回，再融合为供精排使用的候选。
     # 输入：改写后的问题和 SearchFilter；输出：候选 Hit 列表与召回数量统计。
     # 两路严格使用相同权限与元数据过滤。
-    def retrieve(self, query, filters):
-        # 编码改写后的问题。
+    def retrieve(self, query: str, filters: SearchFilter) -> tuple[list[Hit], dict[str, int]]:
+        # 编码改写后的问题。  
+        # 1.可能加了前缀 2.把query向量化，这里是512维的 3.做了数值边界（无穷大小和非数字）和cos是0角度的验证
         vector = self.embedder.query(query)
         # 向量 Top-K。
+        # 1.在校验了一次 2.把条件拼接在里面返回多个hits对象，就是cos后的数据，并且里面加了向量化近似检索来控制精度
         vector_hits = self.repository.vector_search(vector, filters, self.embedder.model_name, self.settings.recall_k)
         # 去掉弱语义命中。
         vector_hits = [hit for hit in vector_hits if hit.vector_score >= self.settings.min_vector_score]

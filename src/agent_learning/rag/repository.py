@@ -1,6 +1,6 @@
 import json
 from uuid import NAMESPACE_URL, uuid5
-from agent_learning.core.models import Hit
+from agent_learning.core.models import Hit, SearchFilter
 from agent_learning.core.providers import validate_vectors
 from agent_learning.rag.ingestion import document_hash
 
@@ -166,7 +166,7 @@ class PostgresRepository:
     # 方法功能：把数据库字典行转换为检索阶段共用的数据对象。
     # 输入：数据库结果字典；输出：一个 Hit。
     # 将数据库行转换为统一 Hit。
-    def _hit(self, row):
+    def _hit(self, row: dict) -> Hit:
         # 数值转换为普通 Python 类型。
         return Hit(id=str(row["id"]), document_id=str(row["document_id"]), content=row["content"], title=row["title"], source=row["source"], metadata=row["metadata"], vector_score=float(row.get("vector_score", 0)))
 
@@ -175,16 +175,18 @@ class PostgresRepository:
     # 两路查询共享来源字段。
     def _select(self):
         # 子块偏移覆盖原文同名字段。
+        # ||是合并的语法 多个json合并成一个
         return "SELECT c.id,c.document_id,c.content,d.title,d.source,d.metadata || c.metadata || jsonb_build_object('version',d.version) AS metadata"
 
     # 方法功能：在权限和元数据条件内执行 pgvector 余弦距离 Top-K 查询。
     # 输入：查询向量、过滤器、模型名和 K；输出：按距离排序的 Hit 列表。
     # 数据库余弦距离检索。
-    def vector_search(self, vector, filters, model, k):
+    def vector_search(self, vector: list[float], filters: SearchFilter, model: str, k: int) -> list[Hit]:
         from psycopg2.extras import RealDictCursor
         # 校验查询向量。
         validate_vectors([vector], 1, self.dimension)
         # 与关键词语料一致的过滤条件。
+        # 拼接条件，where是语句，parameters是具体的值
         where, parameters = filter_sql(filters, model)
         # 参数化向量字符串。
         encoded = json.dumps(vector)
@@ -199,10 +201,15 @@ class PostgresRepository:
                 # 直接使用列名。
                 with connection.cursor(cursor_factory=RealDictCursor) as cursor:
                     # 提高过滤场景的候选搜索量。
+                    # HNSW 是向量的近似检索。ef_search默认是40
+                    # LOCAL是当前事务，事务关闭会还原成默认值40
+                    # ef_search这里的意思是召回数：比如召唤附近100条记录。这里值越大越准，但是消耗越大。
                     cursor.execute("SET LOCAL hnsw.ef_search = 100")
                     # 绑定全部动态值。
+                    # 4个参数对应 第一个对应拼接sql里的cos的向量，第二个是where后的参数，第三个是order by后的向量，k是limit
+                    # *parameters 这里的* 解包，把参数列出来。如果和%参数个数不一致，会报错。
                     cursor.execute(sql, [encoded, *parameters, encoded, k])
-                    # 返回统一召回结果。
+                    # 返回统一召回结果。 这里是游标查到多行数据，就放到hit里，是一个对象，就是多个hit
                     return [self._hit(row) for row in cursor.fetchall()]
 
         # 像旧代码一样显式释放连接。
@@ -212,7 +219,7 @@ class PostgresRepository:
     # 方法功能：读取与向量查询相同授权范围的全部小语料，供 Python 计算 BM25。
     # 输入：过滤器、模型名和语料上限；输出：Hit 语料列表；超出上限明确报错。
     # 为小规模中文 BM25 提供完整过滤语料。
-    def lexical_corpus(self, filters, model, limit):
+    def lexical_corpus(self, filters: SearchFilter, model: str, limit: int) -> list[Hit]:
         from psycopg2.extras import RealDictCursor
         # 严格复用权限、实体、版本过滤。
         where, parameters = filter_sql(filters, model)

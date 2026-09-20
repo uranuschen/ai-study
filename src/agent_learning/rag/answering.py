@@ -159,6 +159,7 @@ class RAGPipeline:
     # 权限过滤由调用者提供，不能从问题提升权限。
     def ask(self, question: str, filters: SearchFilter) -> dict:
         # 改写问题并识别意图。
+        # 业务：提取关键字，比如单号，refund这些。
         plan = self.query_processor.process(question)
         # 复制用户原本的过滤条件。
         filter_values = filters.to_dict()
@@ -166,8 +167,10 @@ class RAGPipeline:
         filter_values["entity_id"] = filters.entity_id or plan["entity_id"]
         # 用普通字典创建本次检索条件。
         effective = SearchFilter(**filter_values)
-        # 混合召回、去重、融合、候选 Top-K。
+
+        # 混合召回、去重、融合、候选 Top-K。  核心方法
         hits, trace = self.retriever.retrieve(plan["query"], effective)
+
         # 使用原始问题精排，避免改写漂移。
         ranked = self.reranker.rank(plan["original"], hits) if hits else []
         # 阈值过滤，Top-K 由去重后的 ContextBuilder 执行。
