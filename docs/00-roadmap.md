@@ -11,10 +11,10 @@
 | 36–46 文档加载 / 切分 / 入库 | DocumentLoader、DocumentChunker、IngestionPipeline |
 | 47–52 检索 / 来源 / 精排 / 混合 / 过滤 | HybridRetriever、RAGPipeline 及独立组件 |
 | 53–55 测试 / 优化 / 验收 | 15 个固定用例、离线回归、Chunk/Top-K/Prompt 实验 |
-| 后续 Agent 与更深入课程 | 暂不实现；用户继续学习时单独建目录 |
+| 后续 Agent 与更深入课程 | 已开始独立的 LangGraph 单节点 Console；Agent loop、MCP 等仍按课程逐步实现 |
 
 课程表自身将第 56–70 课标为 Agent 与工作流，第 101–120 课标为模型微调与评测，后续还有部署等内容。用户将后续学习统称为 AI Agent 深入阶段，本次以用户明确的“当前只做入库和问答”作为范围，不根据课程标题扩大开发任务。
 
-建议下一步：先用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K，然后校准拒答阈值，最后比较 Prompt。一次只改变一个因素，记录失败案例。完成 RAG 验收后，可将 `RAGPipeline.ask()` 包装为只读 Tool；届时再引入 Agent 状态、工具循环、最大步数和 Memory。
+RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。LangGraph 学习已从独立的单节点 Console 开始；后续课程再加多节点 State 传值、条件路由、工具循环和最大步数，届时可将 `RAGPipeline.ask()` 包装为只读 Tool。
 
 协作限制：未获同意不接触数据库，不删除目录，不执行 Git/SVN。

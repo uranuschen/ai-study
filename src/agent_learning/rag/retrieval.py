@@ -242,7 +242,7 @@ class HybridRetriever:
         corpus = self.repository.lexical_corpus(filters, self.embedder.model_name, self.settings.bm25_max_chunks)
         # 独立关键词召回。
         keyword_hits = self.bm25.search(query, corpus, self.settings.recall_k)
-        # 向量检索和 BM25 关键词检索的结果合在一起，按子块 id 去重，算一个融合分，最后取前 k 个。 比较核心
+        # 向量检索和 BM25 关键词检索的结果合在一起，按子块 id 去重，算一个rrf融合分，最后取前 k 个。 比较核心
         candidates = self.fusion.merge(vector_hits, keyword_hits, self.settings.candidate_k)
         # 返回阶段统计。
         return candidates, {"vector_hits": len(vector_hits), "bm25_hits": len(keyword_hits), "candidates": len(candidates)}

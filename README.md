@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。代码按 old/ 的普通类、函数、字典和现有库调用整理，只做资料入库、用户问答两条流程。表结构继续以 sql/ 中现有文件为准，本次简化不修改 SQL。
+当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；另有独立的 LangGraph 单节点 Console 学习入口。表结构继续以 sql/ 中现有文件为准。
 
 ## 直接运行和 Debug
 
@@ -8,18 +8,28 @@
 
 | 文件 | 在文件顶部改什么 | 默认行为 |
 |---|---|---|
-| [main_ingest.py](main_ingest.py) | FILE_PATH、TENANT_ID、WRITE_TO_DB | WRITE_TO_DB=False，只加载和切分预览 |
+| [main_ingest.py](main_ingest.py) | FILE_PATH、TENANT_ID、WRITE_TO_DB | 当前文件为 WRITE_TO_DB=True；改为 False 才只预览 |
 | [main_ask.py](main_ask.py) | QUESTION、TENANT_ID、SECURITY_LEVEL、BUSINESS_MODULE、TAGS、USE_OLLAMA | 默认调用现有模型；USE_OLLAMA=True 时改用本机 Ollama 回答 |
 
 ```bash
-# 用户可以自行运行；入库文件保持 WRITE_TO_DB=False 时只预览。
+# 先检查 main_ingest.py 中的 WRITE_TO_DB；False 只预览，True 会写库。
 .venv/bin/python main_ingest.py
 
 # 用户完成建表、初始化和真实向量入库后再执行问答。
 .venv/bin/python main_ask.py
 ```
 
-真正入库：用户先手动执行 SQL 建表和初始化，再把 `main_ingest.py` 的 `WRITE_TO_DB` 改为 `True` 后运行。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
+真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
+
+## LangGraph 单节点 Console
+
+运行 [main_workflow.py](main_workflow.py)，在 Console 输入一句话并按回车；IDE Debug 时使用可输入的终端。这个入口只调用 [single_node.py](src/agent_learning/workflows/single_node.py) 里的 `START → echo → END` 图，不访问数据库或模型，也不执行 RAG 问答。
+
+```bash
+.venv/bin/python main_workflow.py
+```
+
+例如输入 `你好，LangGraph`，会输出 `单节点收到：你好，LangGraph`。下一课再在这个独立目录里学习多个节点和 State 传值；当前单节点还不是 Agent loop。依赖 `langgraph` 已列在 `pyproject.toml`，新环境安装项目依赖后即可运行。
 
 ## 配置在哪里
 
