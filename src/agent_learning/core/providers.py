@@ -75,9 +75,7 @@ class CrossEncoderReranker:
         # 保存配置。
         self.settings, self._model = settings, None
 
-    # 方法功能：逐对计算问题与正文的相关性，回填分数并按相关度排序。
-    # 输入：原始问题与 Hit 候选列表；输出：按 rerank_score 降序排列的 Hit 列表。
-    # 对所有候选打分。
+    # 给每条候选资料重新打相关性分数，再按分数排序返回
     def rank(self, query: str, hits: list[Hit]) -> list[Hit]:
         # 空结果不加载模型。
         if not hits:
@@ -91,7 +89,7 @@ class CrossEncoderReranker:
             self._model = CrossEncoder(self.settings.rerank_model, max_length=512, local_files_only=self.settings.local_files_only, default_activation_function=torch.nn.Sigmoid())
         # 像旧代码一样先准备问题和文档对。
         pairs = [(query, hit.content) for hit in hits]
-        # 直接调用模型预测，不做动态参数适配。
+        # 直接调用模型预测，精排打分 核心。
         scores = self._model.predict(pairs, show_progress_bar=False)
         # 检查预测数量。
         if len(scores) != len(hits):

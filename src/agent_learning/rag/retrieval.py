@@ -93,7 +93,7 @@ class BM25Retriever:
         results = []
         # 同步遍历正文、分词和得分。
         for hit, words, score in zip(corpus, document_words, scores):
-            # 没有任何查询词匹配就跳过。
+            # 没有任何查询词匹配就跳过。 intersection是交集
             if not set(query_words).intersection(words):
                 # 不能把无关的零分文档加入结果。
                 continue
@@ -103,7 +103,8 @@ class BM25Retriever:
             result.bm25_score = float(score)
             # 根据真实词命中保留，不简单按正负数过滤。
             results.append(result)
-        # 取关键词 Top-K。
+        # 取关键词 Top-K。 给每个 Hit 生成排序依据，先看 BM25 分数，分数相同时再看 id。 这里-hit 是改成负数来排，这样高分在前。
+        # :k是取前几个，不足k就返回全部
         return sorted(results, key=lambda hit: (-hit.bm25_score, hit.id))[:k]
 
 
@@ -121,13 +122,11 @@ class ResultFusion:
         # 保存配置。
         self.method, self.weight, self.rrf_k = method, vector_weight, rrf_k
 
-    # 方法功能：保留各路首次排名，按 ID 去重并累计融合得分。
-    # 输入：向量候选、关键词候选和候选上限 K；输出：统一排序后的前 K 个 Hit。
-    # ID 去重不丢失两路分数。
+    #把向量检索和 BM25 关键词检索的结果合在一起，按子块 id 去重，算一个融合分，最后取前 k 个。
     def merge(self, vector_hits: list[Hit], keyword_hits: list[Hit], k: int) -> list[Hit]:
-        # 以子块 ID 唯一标识。
+        # 建立一个字典，用 hit.id 当键。这样同一个子块不会出现两份。
         merged = {}
-        # 分别处理向量与关键词列表。
+        # 循环两次，先处理向量结果，再处理关键词结果
         for route in ["vector", "keyword"]:
             # 当前处理向量结果。
             if route == "vector":
@@ -163,9 +162,9 @@ class ResultFusion:
             minimum = min(route_scores, default=0)
             # 最大原始分数。
             maximum = max(route_scores, default=0)
-            # 排名从 1 开始。
+            # 逐个处理去重后的结果，rank 是排名，从 1 开始
             for rank, hit in enumerate(unique, 1):
-                # 相同子块只保留一份。
+                # 如果这个 id 还不在 merged 中。
                 if hit.id not in merged:
                     # 复制候选内容和来源。
                     merged[hit.id] = Hit(**hit.to_dict())
@@ -237,13 +236,13 @@ class HybridRetriever:
         # 向量 Top-K。
         # 1.在校验了一次 2.把条件拼接在里面返回多个hits对象，就是cos后的数据，并且里面加了向量化近似检索来控制精度
         vector_hits = self.repository.vector_search(vector, filters, self.embedder.model_name, self.settings.recall_k)
-        # 去掉弱语义命中。
+        # 去掉弱语义命中。 低于0.35的数据不要
         vector_hits = [hit for hit in vector_hits if hit.vector_score >= self.settings.min_vector_score]
         # 读取完整过滤语料。
         corpus = self.repository.lexical_corpus(filters, self.embedder.model_name, self.settings.bm25_max_chunks)
         # 独立关键词召回。
         keyword_hits = self.bm25.search(query, corpus, self.settings.recall_k)
-        # 融合去重后取候选。
+        # 向量检索和 BM25 关键词检索的结果合在一起，按子块 id 去重，算一个融合分，最后取前 k 个。 比较核心
         candidates = self.fusion.merge(vector_hits, keyword_hits, self.settings.candidate_k)
         # 返回阶段统计。
         return candidates, {"vector_hits": len(vector_hits), "bm25_hits": len(keyword_hits), "candidates": len(candidates)}

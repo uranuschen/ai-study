@@ -171,11 +171,11 @@ class RAGPipeline:
         # 混合召回、去重、融合、候选 Top-K。  核心方法
         hits, trace = self.retriever.retrieve(plan["query"], effective)
 
-        # 使用原始问题精排，避免改写漂移。
+        # 原始问题精排打分，避免改写漂移。
         ranked = self.reranker.rank(plan["original"], hits) if hits else []
-        # 阈值过滤，Top-K 由去重后的 ContextBuilder 执行。
+        # 精排打分的阈值过滤。
         supported = [hit for hit in ranked if hit.rerank_score >= self.settings.min_rerank_score]
-        # 压缩截断并保留来源。
+        # 压缩截断并保留来源。  这里需要优化 todo 问一下ds如何压缩，配合后面一课要学的做改进
         context, citations = self.context_builder.build(supported)
         # 记录学习调参需要的统计。
         trace.update({"query": plan, "filters": effective.to_dict(), "reranked": len(ranked), "context_chars": len(context), "evidence_count": len(citations)})
