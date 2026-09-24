@@ -269,8 +269,18 @@ class AnswerValidator:
     def validate(self, raw, citations):
         # 无效结构直接拒答。
         try:
+            # 去掉模型偶尔附加在完整 JSON 外面的 Markdown 代码围栏。
+            text = raw.strip()
+            # 本地模型可能输出 ```json 代码块。
+            if text.startswith("```json") and text.endswith("```"):
+                # 只去掉最外层围栏，不改写 JSON 内容。
+                text = text[7:-3].strip()
+            # 也兼容未标记语言的代码围栏。
+            elif text.startswith("```") and text.endswith("```"):
+                # 保留围栏内部的原始 JSON。
+                text = text[3:-3].strip()
             # 不猜测截断或损坏的 JSON。
-            data = json.loads(raw)
+            data = json.loads(text)
             # 模型自己判断证据不足。
             if not isinstance(data, dict) or data.get("answerable") is not True:
                 # 清空无依据引用。

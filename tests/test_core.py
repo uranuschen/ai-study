@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from agent_learning.core.config import Settings
 from agent_learning.core.models import Document, Hit, SearchFilter
-from agent_learning.core.providers import validate_vectors
+from agent_learning.core.providers import CompatibleChatModel, validate_vectors
 from agent_learning.rag.answering import UNKNOWN, AnswerValidator, ContextBuilder, PromptBuilder, RAGPipeline
 from agent_learning.rag.chunking import DocumentChunker
 from agent_learning.rag.ingestion import IngestionPipeline, document_hash
@@ -306,6 +306,23 @@ class RetrievalTests(unittest.TestCase):
 # 类职责：检查拒答、来源和上下文预算。
 # 检查拒答、来源和上下文预算。
 class AnswerTests(unittest.TestCase):
+    # 方法功能：本地回答仍走原有客户端，只替换地址、模型、占位 key 和超时。
+    def test_ollama_client_uses_local_settings(self):
+        # 构造不含真实密钥的本地配置。
+        settings = Settings(llm_base_url="http://127.0.0.1:11434/v1", llm_api_key="ollama", llm_model="qwen3:8b", llm_timeout=180)
+        # 测试消息不含真实业务数据。
+        messages = [{"role": "user", "content": "测试"}]
+        # 用替身阻止真正访问网络。
+        with patch("openai.OpenAI") as client_class, patch("builtins.print"):
+            # 模拟兼容接口返回的第一条消息。
+            client_class.return_value.__enter__.return_value.chat.completions.create.return_value.choices = [Mock(message=Mock(content='{"ok":true}'))]
+            # 调用真实客户端包装方法。
+            raw = CompatibleChatModel(settings).chat(messages)
+        # 返回模型原始字符串。
+        self.assertEqual(raw, '{"ok":true}')
+        # 连接只指向本机，并使用本地超时。
+        client_class.assert_called_once_with(api_key="ollama", base_url="http://127.0.0.1:11434/v1", timeout=180, max_retries=1)
+
     # 方法功能：放不下的无标点长块不硬截断，继续尝试后续完整证据。
     def test_budget_skips_unbreakable_evidence(self):
         # 使用紧预算。
@@ -416,6 +433,14 @@ class AnswerTests(unittest.TestCase):
         answer, used, status = validator.validate('{"answerable":true,"answer":"600 [1]","citations":[1]}', citations)
         # 正常回答通过。
         self.assertEqual((answer, status), ("600 [1]", "answered"))
+        # 本地模型的 Markdown 代码围栏只影响外层格式。
+        fenced = '```json\n{"answerable":true,"answer":"600 [1]","citations":[1]}\n```'
+        # 去掉围栏后仍按原有规则校验引用。
+        self.assertEqual(validator.validate(fenced, citations)[2], "answered")
+        # 围栏内部引用错误仍必须拒答。
+        invalid_fenced = '```json\n{"answerable":true,"answer":"600 [2]","citations":[2]}\n```'
+        # 不能自动补造有效来源。
+        self.assertEqual(validator.validate(invalid_fenced, citations)[2], "invalid_citations")
 
     # 方法功能：构造无网络测试链路。
     # 构造无网络测试链路。

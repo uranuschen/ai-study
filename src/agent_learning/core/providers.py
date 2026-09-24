@@ -126,8 +126,12 @@ class CompatibleChatModel:
         if not self.settings.llm_api_key:
             # 不输出密钥。
             raise ValueError("请设置 LLM_API_KEY 或 DEEPSEEK_API_KEY")
+        # 本地模型加载和生成可能较慢，明确提示当前已经进入回答阶段。
+        if self.settings.llm_base_url.startswith("http://127.0.0.1:11434/"):
+            # 立即显示状态，避免终端长时间空白。
+            print(f"正在等待本地模型 {self.settings.llm_model} 生成回答...", flush=True)
         # 关闭客户端连接。
-        with OpenAI(api_key=self.settings.llm_api_key, base_url=self.settings.llm_base_url, timeout=60, max_retries=1) as client:
+        with OpenAI(api_key=self.settings.llm_api_key, base_url=self.settings.llm_base_url, timeout=self.settings.llm_timeout, max_retries=1) as client:
             # 要求稳定的结构化回答。
             result = client.chat.completions.create(model=self.settings.llm_model, messages=messages, temperature=0, max_tokens=1200)
         # 空响应交给拒答校验。

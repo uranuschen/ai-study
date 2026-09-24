@@ -25,7 +25,13 @@ SECURITY_LEVEL = 1  # 允许读取的资料级别。
 BUSINESS_MODULE = None  # 只查财务时改为 "finance"。
 DOC_TYPE = None  # 只查制度时改为 "policy"。
 TAGS = []  # 需要时填已有标签。
+USE_OLLAMA = True  # 当前用本机 Ollama 回答；改为 False 时使用 DeepSeek。
+OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-r1:7b"。
 ```
+
+`USE_OLLAMA=True` 时，只有最后的回答模型切换到本机 `http://127.0.0.1:11434/v1`。向量检索、BM25、精排、数据库过滤和引用校验都沿用原流程。Ollama 的模型名要与 `ollama list` 显示的一致；本机已验证 `qwen3:8b` 和 `deepseek-r1:7b` 都是 `Q4_K_M`。兼容客户端传入的 `ollama` 只是本地占位 key，不是 DeepSeek 密钥。改为 `False` 即恢复在线模型。
+
+本地模型可能输出 Markdown 代码围栏，程序只去掉最外层围栏；如果 JSON 字段或引用编号仍不符合要求，依然明确拒答。Qwen 8B 的独立格式测试约 71 秒返回；开始调用 Ollama 时终端会显示等待提示，最终答案仍要等模型完成后才会打印。
 
 在 `pipeline.ask(QUESTION, filters)` 打断点，进入 `RAGPipeline.ask()`，依次观察：
 
@@ -61,4 +67,4 @@ PDF 按页加载；Word 提取段落和表格；Excel 首行为表头并按行�
 | 返回 invalid_citations | 模型引用的编号缺失或越界，程序已拒答 |
 | 数据库或模型报错 | 按异常定位，不把运行失败当成资料不足 |
 
-本次仅执行离线测试。真实数据库、模型和问答须由用户自行运行验证。未经用户明确同意，不操作数据库、不删除目录，不执行任何 Git/SVN 操作。
+自动测试默认离线运行；本地 Ollama 的独立格式测试不访问数据库。完整问答由用户运行验证。未经用户明确同意，不操作数据库、不删除目录，不执行任何 Git/SVN 操作。

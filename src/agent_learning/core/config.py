@@ -17,6 +17,8 @@ class Settings:
         llm_api_key='',
         # 回答模型。
         llm_model='deepseek-chat',
+        # 在线回答默认等待时间，单位为秒。
+        llm_timeout=60,
         # 与旧项目一致的中文模型。
         embedding_model='BAAI/bge-small-zh-v1.5',
         # SQL 固定为 vector(512)。
@@ -60,6 +62,8 @@ class Settings:
         self.llm_api_key = llm_api_key
         # 回答模型。
         self.llm_model = llm_model
+        # 保存模型请求超时。
+        self.llm_timeout = llm_timeout
         # 与旧项目一致的中文模型。
         self.embedding_model = embedding_model
         # SQL 固定为 vector(512)。
@@ -124,6 +128,10 @@ class Settings:
         if min(self.context_chars, self.per_chunk_chars, self.bm25_max_chunks) < 1:
             # 防止静默空结果。
             raise ValueError("上下文预算和 BM25 上限必须为正数")
+        # 模型调用等待时间必须为正数。
+        if self.llm_timeout <= 0:
+            # 防止配置无效超时。
+            raise ValueError("LLM_TIMEOUT 必须大于 0")
 
 
 # 方法功能：用 load_dotenv 和 os.getenv 明确读取每一个配置项。

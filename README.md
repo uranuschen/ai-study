@@ -9,7 +9,7 @@
 | 文件 | 在文件顶部改什么 | 默认行为 |
 |---|---|---|
 | [main_ingest.py](main_ingest.py) | FILE_PATH、TENANT_ID、WRITE_TO_DB | WRITE_TO_DB=False，只加载和切分预览 |
-| [main_ask.py](main_ask.py) | QUESTION、TENANT_ID、SECURITY_LEVEL、BUSINESS_MODULE、TAGS | 用户运行后查询数据库并调用模型 |
+| [main_ask.py](main_ask.py) | QUESTION、TENANT_ID、SECURITY_LEVEL、BUSINESS_MODULE、TAGS、USE_OLLAMA | 默认调用现有模型；USE_OLLAMA=True 时改用本机 Ollama 回答 |
 
 ```bash
 # 用户可以自行运行；入库文件保持 WRITE_TO_DB=False 时只预览。

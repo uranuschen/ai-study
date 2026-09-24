@@ -82,6 +82,17 @@ class SettingsTests(unittest.TestCase):
         # 隐藏模型密钥。
         self.assertNotIn("private-key", text)
 
+    # 方法功能：在线模型默认超时不变，本地模型可以设置更长等待时间。
+    def test_llm_timeout(self):
+        # 当前在线调用仍使用 60 秒。
+        self.assertEqual(Settings().llm_timeout, 60)
+        # 本地模型允许更长的等待时间。
+        self.assertEqual(Settings(llm_timeout=180).llm_timeout, 180)
+        # 非正数超时立即报错。
+        with self.assertRaises(ValueError):
+            # 不创建无效的调用配置。
+            Settings(llm_timeout=0)
+
 
 # 仅在直接执行文件时运行测试。
 if __name__ == "__main__":
