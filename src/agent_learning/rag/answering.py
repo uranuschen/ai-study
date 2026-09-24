@@ -18,7 +18,7 @@ class ContextBuilder:
     # 统一读取预算。
     def __init__(self, settings: Settings):
         # 保存上下文参数。
-        self.settings = settings
+        self.settings: Settings = settings
 
     # 方法功能：按可靠的原文位置，只裁同文档已选证据的重复前缀或后缀。
     # 输入：候选正文及偏移、文档编号、已选证据；输出：仍连续的正文及偏移。
@@ -331,7 +331,7 @@ class RAGPipeline:
         # 保存回答校验对象。
         self.validator = validator
         # 保存运行配置。
-        self.settings = settings
+        self.settings: Settings = settings
 
     # 方法功能：串联完整问答链路，无有效证据时跳过 LLM，否则生成并校验回答。
     # 输入：用户问题与可信 SearchFilter；输出：包含 answer、citations、status、trace 的结果字典。

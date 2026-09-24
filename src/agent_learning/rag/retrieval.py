@@ -220,7 +220,7 @@ class HybridRetriever:
         # 保存向量模型对象，可跳转到 query。
         self.embedder = embedder
         # 保存召回数量、阈值和融合参数。
-        self.settings = settings
+        self.settings: Settings = settings
         # 默认中文 BM25。
         self.bm25 = bm25 or BM25Retriever()
         # 构造融合器。
