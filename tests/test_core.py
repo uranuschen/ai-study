@@ -61,6 +61,67 @@ class ChunkTests(unittest.TestCase):
             # 模拟空白 PDF 页。
             DocumentChunker().split(" \n ")
 
+    # 方法功能：验证真实企业资料中的同一审批档和住宿标准不会被拆散。
+    def test_enterprise_field_groups_and_safe_overlap(self):
+        # 读取与只读数据库核对过的本地原文。
+        documents = DocumentLoader().load(ROOT / "data/enterprise_documents.json")
+        # 按租户、业务编号和版本定位两个长文档。
+        selected = {(doc.tenant_id, doc.external_id, doc.version): doc for doc in documents}
+        # 切分现行差旅制度。
+        travel = selected[("acme", "FIN-TRAVEL", "2026.1")]
+        # 取得检索用子块。
+        travel_chunks = DocumentChunker().split(travel.content)[1]
+        # 第二块必须从完整字段名开始，不能从字段值中间开始。
+        self.assertTrue(travel_chunks[1].content.startswith("structured_data.住宿标准[1].地区:"))
+        # 同一地区的名称与金额至少在一个完整子块中同时出现。
+        self.assertTrue(any("structured_data.住宿标准[1].地区:" in chunk.content and "structured_data.住宿标准[1].每晚人民币:" in chunk.content for chunk in travel_chunks))
+        # 切分付款审批制度。
+        payment = selected[("acme", "FIN-PAYMENT", "1.0")]
+        # 取得付款审批子块。
+        payment_chunks = DocumentChunker().split(payment.content)[1]
+        # 第二块必须从完整字段名开始。
+        self.assertTrue(payment_chunks[1].content.startswith("structured_data.审批区间[1].审批:"))
+        # 二十万元档的审批人和最低金额必须留在同一块。
+        self.assertTrue(any("structured_data.审批区间[2].审批:" in chunk.content and "structured_data.审批区间[2].最低:" in chunk.content for chunk in payment_chunks))
+        # 每个子块都必须仍是原文的准确区间。
+        for document, chunks in [(travel, travel_chunks), (payment, payment_chunks)]:
+            # 逐块核对来源位置。
+            for chunk in chunks:
+                # 不能为了补标题或重叠而伪造原文位置。
+                self.assertEqual(chunk.content, document.content[chunk.start:chunk.end])
+
+    # 方法功能：条件与例外尽量同块，表格行只在过长时才允许硬切。
+    def test_paragraph_and_table_row_boundaries(self):
+        # 一段完整规则及后续说明。
+        policy = "# 付款规则\n\n付款达到20万元须经财务总监审批。紧急付款也不得跳过账户复核。\n\n后续操作：完成回拨。"
+        # 用较小预算迫使两段进入不同子块。
+        policy_chunks = DocumentChunker(45, 10, 150).split(policy)[1]
+        # 条件和例外在同一块中可一起引用。
+        self.assertTrue(any("付款达到20万元须经财务总监审批。紧急付款也不得跳过账户复核。" in chunk.content for chunk in policy_chunks))
+        # 表格某行恰好跨越块大小边界。
+        row = "| A | 完整一行内容说明 |\n"
+        # 保留表头和两条数据行。
+        table = "标题\n\n| 项目 | 条件 |\n| --- | --- |\n" + row + "| B | 另一条完整条件和例外 |"
+        # 获取表格子块。
+        table_chunks = DocumentChunker(42, 8, 120).split(table)[1]
+        # 一行能放进单块时，不能只保存其中半行。
+        self.assertTrue(any(row in chunk.content for chunk in table_chunks))
+        # 任何包含这行内容的块都从行首开始或包含完整行。
+        self.assertTrue(all("完整一行内容说明" not in chunk.content or row in chunk.content for chunk in table_chunks))
+
+    # 方法功能：没有自然边界的超长文本仍要完整覆盖，且块大小不超限。
+    def test_long_unbroken_text_uses_hard_limit(self):
+        # 模拟没有换行与句号的 OCR 文本。
+        text = "连续内容" * 50
+        # 强制超过父块和子块的预算。
+        parents, chunks = DocumentChunker(40, 10, 100).split(text)
+        # 所有检索子块都保持长度上限。
+        self.assertTrue(all(len(chunk.content) <= 40 for chunk in chunks))
+        # 不因为没有自然边界就漏掉原文末尾。
+        self.assertEqual({position for chunk in chunks for position in range(chunk.start, chunk.end)}, set(range(len(text))))
+        # 父块仍然能覆盖完整原文。
+        self.assertEqual({position for parent in parents for position in range(parent.start, parent.end)}, set(range(len(text))))
+
 
 # 类职责：检查结构化数据可用于实际入库。
 # 检查结构化数据可用于实际入库。

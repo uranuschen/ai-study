@@ -11,8 +11,8 @@ from agent_learning.core.config import load_settings
 from agent_learning.cli import build_ingestion_pipeline
 
 
-# 修改这里，选择需要导入的文件。
-FILE_PATH = BASE_DIR / "data" / "enterprise_documents.json"
+# 只导入这次需要按新切分规则重建的两篇资料。
+FILE_PATH = BASE_DIR / "data" / "rechunk_two_documents.json"
 # 文件没有指定租户时，使用这个默认值。
 TENANT_ID = "acme"
 # False 只预览；用户准备好表后可改为 True，生成向量并入库。

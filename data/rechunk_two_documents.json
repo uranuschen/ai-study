@@ -1,0 +1,51 @@
+[
+  {
+    "external_id": "FIN-TRAVEL",
+    "title": "差旅住宿报销制度（现行版）",
+    "tenant_id": "acme",
+    "business_module": "finance",
+    "doc_type": "policy",
+    "version": "2026.1-chunk-v2",
+    "is_latest": true,
+    "security_level": 1,
+    "source": "财务部/差旅制度/2026",
+    "tags": ["module:finance-travel", "region:cn", "audience:employee"],
+    "metadata": {
+      "section": "第3章 住宿",
+      "effective_date": "2026-01-01",
+      "owner": "财务共享中心"
+    },
+    "vector_fields": ["content", "structured_data"],
+    "content": "适用于星河科技 acme 的境内员工出差。一线城市住宿每人每晚不超过 600 元，其他城市不超过 400 元。跨地区项目连续驻场超过 14 晚，须在订房前获得部门负责人和财务经理双重审批。超标部分原则上个人承担，展会导致的价格上涨可事前提交三家酒店报价申请特批。不得把旧版 450 元标准作为现行标准。发票抬头须与签约主体一致，住宿发票、支付凭证、出差审批单缺一不可。",
+    "structured_data": {
+      "住宿标准": [
+        {"地区": "一线城市", "每晚人民币": 600},
+        {"地区": "其他城市", "每晚人民币": 400}
+      ],
+      "长期驻场": {"触发晚数": 14, "审批人": ["部门负责人", "财务经理"]},
+      "例外": "展会期间凭三家酒店报价事前特批"
+    }
+  },
+  {
+    "external_id": "FIN-PAYMENT",
+    "title": "供应商付款审批分级",
+    "tenant_id": "acme",
+    "business_module": "finance",
+    "doc_type": "policy",
+    "version": "1.0-chunk-v2",
+    "is_latest": true,
+    "security_level": 2,
+    "source": "财务部/付款授权矩阵",
+    "tags": ["module:finance", "audience:manager"],
+    "metadata": {"section": "供应商付款"},
+    "vector_fields": ["content", "structured_data"],
+    "content": "供应商付款低于 5 万元由部门负责人审批；5 万元至不足 20 万元增加财务经理审批；20 万元及以上增加财务总监审批。首次向供应商新账户付款，必须由采购与财务分别回拨验证账户。紧急付款也不得跳过账户复核。",
+    "structured_data": {
+      "审批区间": [
+        {"最低": 0, "最高不含": 50000, "审批": "部门负责人"},
+        {"最低": 50000, "最高不含": 200000, "审批": "部门负责人、财务经理"},
+        {"最低": 200000, "审批": "部门负责人、财务经理、财务总监"}
+      ]
+    }
+  }
+]

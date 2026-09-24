@@ -1,6 +1,7 @@
 import hashlib
 import json
 from agent_learning.core.providers import validate_vectors
+from agent_learning.rag.chunking import DocumentChunker
 
 
 # 方法功能：计算文档正文、JSON、来源和权限信息的稳定哈希，用于同版本幂等检查。
@@ -21,9 +22,11 @@ class IngestionPipeline:
     # 方法功能：保存入库流程用到的几个普通对象。
     # 输入：loader、chunker、embedder、repository；输出：完成初始化的入库流程。
     # 直接接收需要调用的对象。
-    def __init__(self, loader, chunker, embedder=None, repository=None):
-        # 统一保存组件。
-        self.loader, self.chunker, self.embedder, self.repository = loader, chunker, embedder, repository
+    def __init__(self, loader, chunker: DocumentChunker, embedder=None, repository=None):
+        # 保存加载、向量化和数据库对象。
+        self.loader, self.embedder, self.repository = loader, embedder, repository
+        # 明确标注切分器类型，方便编辑器跳转到 split 方法。
+        self.chunker: DocumentChunker = chunker
 
     # 方法功能：遍历输入文档进行校验和切分，write=True 时再计算向量并原子保存。
     # 输入：文件路径、默认租户和写入开关；输出：每篇文档的版本、块数量与处理状态列表。
@@ -75,8 +78,8 @@ class IngestionPipeline:
                 vectors = self.embedder.passages([chunk.content for chunk in chunks])
                 # 再次验证依赖输出。
                 validate_vectors(vectors, len(chunks), self.embedder.dimension)
-                # 记录切分与模型版本。
-                fingerprint = f"char-v1:{self.chunker.chunk_size}:{self.chunker.overlap}:{self.chunker.parent_size}:{self.embedder.model_name}"
+                # 记录新版结构切分规则、长度参数与向量模型。
+                fingerprint = f"{self.chunker.algorithm_version}:{self.chunker.chunk_size}:{self.chunker.overlap}:{self.chunker.parent_size}:{self.embedder.model_name}"
                 # 单篇事务保存。
                 status = self.repository.save(document, parents, chunks, vectors, self.embedder.model_name, fingerprint)
             # 不输出完整敏感正文。
