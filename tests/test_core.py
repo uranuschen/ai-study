@@ -306,9 +306,8 @@ class RetrievalTests(unittest.TestCase):
 # 类职责：检查拒答、来源和上下文预算。
 # 检查拒答、来源和上下文预算。
 class AnswerTests(unittest.TestCase):
-    # 方法功能：长来源头也计入预算。
-    # 长来源头也计入预算。
-    def test_budget_and_deduplication(self):
+    # 方法功能：放不下的无标点长块不硬截断，继续尝试后续完整证据。
+    def test_budget_skips_unbreakable_evidence(self):
         # 使用紧预算。
         settings = Settings(context_chars=220, per_chunk_chars=90, top_k=2)
         # 含重复块。
@@ -317,10 +316,86 @@ class AnswerTests(unittest.TestCase):
         context, citations = ContextBuilder(settings).build(hits)
         # 总预算不能超限。
         self.assertLessEqual(len(context), 220)
-        # 去重后再取 Top-K。
-        self.assertEqual([item["chunk_id"] for item in citations], ["a", "c"])
+        # 前两个长块不能安全抽取，第三块仍可完整进入上下文。
+        self.assertEqual([item["chunk_id"] for item in citations], ["c"])
         # 引用必须对应实际送入模型的正文。
         self.assertTrue(all(item["excerpt"] in context for item in citations))
+
+    # 方法功能：新入库的两篇真实资料按同文档位置裁重叠，且引用仍指向准确原文。
+    def test_enterprise_overlap_keeps_new_evidence_and_offsets(self):
+        # 读取与数据库新版本同内容的两篇输入资料。
+        documents = DocumentLoader().load(ROOT / "data/rechunk_two_documents.json")
+        # 使用实际入库时的切分配置。
+        chunker = DocumentChunker()
+        # 采用默认上下文预算。
+        builder = ContextBuilder(Settings())
+        # 分别验证差旅制度和付款审批。
+        for document in documents:
+            # 取得两条有重叠的检索子块。
+            chunks = chunker.split(document.content)[1]
+            # 这两篇各有两个子块。
+            self.assertEqual(len(chunks), 2)
+            # 保留数据库实际使用的 start/end 元数据形式。
+            hits = [Hit(str(index), document.external_id, chunk.content, document.title, document.source, {"start": chunk.start, "end": chunk.end}) for index, chunk in enumerate(chunks)]
+            # 同时验证正常与倒序精排时的前后缀裁剪。
+            for ordered in [hits, list(reversed(hits))]:
+                # 按当前精排次序构造上下文。
+                context, citations = builder.build(ordered, "审批或住宿标准")
+                # 两条证据都有新增内容。
+                self.assertEqual(len(citations), 2)
+                # 引用编号只分配给实际加入的正文。
+                self.assertEqual([item["number"] for item in citations], [1, 2])
+                # 每条引用必须是文档原文的准确连续区间。
+                for item in citations:
+                    # 读取本次裁剪后的绝对偏移。
+                    start, end = item["location"]["start"], item["location"]["end"]
+                    # 引用正文与原文位置一致。
+                    self.assertEqual(item["excerpt"], document.content[start:end])
+                    # 实际模型上下文包含该正文。
+                    self.assertIn(item["excerpt"], context)
+                # 已选证据之间不再重复同一段原文。
+                left, right = citations[0]["location"], citations[1]["location"]
+                # 两个位置可以首尾相接，但不能重叠。
+                self.assertTrue(left["end"] <= right["start"] or right["end"] <= left["start"])
+
+    # 方法功能：预算不足时抽取完整相关句，同时保留相邻例外并更新引用位置。
+    def test_extractive_compression_preserves_exception(self):
+        # 第一条规则和例外是相邻完整句。
+        content = "付款达到20万元须经财务总监审批。例外：特殊合同按协议。发票材料必须齐全。"
+        # 限制单块字符数以触发抽取式压缩。
+        settings = Settings(context_chars=220, per_chunk_chars=34)
+        # 保留原文位置用于核对。
+        hit = Hit("one", "payment", content, "付款制度", "财务部", {"start": 100, "end": 100 + len(content)})
+        # 按问题选证据。
+        context, citations = ContextBuilder(settings).build([hit], "付款达到20万元由谁审批？")
+        # 相关规则与例外都应完整保留。
+        self.assertIn("付款达到20万元须经财务总监审批。例外：特殊合同按协议。", context)
+        # 不相关的后句没有进入有限预算。
+        self.assertNotIn("发票材料", context)
+        # 引用中的位置对应压缩后的准确原文。
+        location = citations[0]["location"]
+        # 计算相对原文起止位置。
+        self.assertEqual(citations[0]["excerpt"], content[location["start"] - 100:location["end"] - 100])
+
+    # 方法功能：来源块结尾若是硬切的半句话，抽取时不能把它当完整证据。
+    def test_extraction_skips_unfinished_tail(self):
+        # 尾部没有句末标点，无法确认后半句是否完整。
+        content = "付款需经理审批。额外条件尚未写完"
+        # 用单块预算触发压缩。
+        settings = Settings(context_chars=200, per_chunk_chars=15)
+        # 只问未写完的条件。
+        context, citations = ContextBuilder(settings).build([Hit("one", "payment", content)], "额外条件是什么")
+        # 不从半句话生成证据。
+        self.assertEqual((context, citations), ("", []))
+
+    # 方法功能：不同文档即使正文相同，也保留两个独立来源。
+    def test_identical_text_from_different_documents_keeps_both_sources(self):
+        # 两个文档提供同一条文字。
+        hits = [Hit("a", "doc-a", "审批需经理同意。", "制度甲", "甲部门"), Hit("b", "doc-b", "审批需经理同意。", "制度乙", "乙部门")]
+        # 组装上下文。
+        _, citations = ContextBuilder(Settings()).build(hits)
+        # 不跨文档删除证据。
+        self.assertEqual([item["document_id"] for item in citations], ["doc-a", "doc-b"])
 
     # 方法功能：拒绝伪造来源编号。
     # 拒绝伪造来源编号。
