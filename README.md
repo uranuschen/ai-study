@@ -67,7 +67,7 @@ make test
 
 ## 资料与限制
 
-[学习路线](docs/00-roadmap.md) · [旧代码盘点](docs/01-inventory.md) · [流程说明](docs/02-architecture.md) · [实验记录](docs/03-experiments.md) · [数据库设计](docs/05-database.md) · [运行与断点](docs/06-running.md)。
+[学习路线](docs/00-roadmap.md) · [旧代码盘点](docs/01-inventory.md) · [流程说明](docs/02-architecture.md) · [实验记录](docs/03-experiments.md) · [数据库设计](docs/05-database.md) · [运行与断点](docs/06-running.md) · [后续工作流与 MCP 设计](docs/09-workflow-mcp-design.md)。
 
 BM25 用于小语料；父块保留但问答不自动展开；自动打标和 Agent 留待后续。CLI 改为直接脚本后，租户和权限仍是学习时手动模拟的身份条件。合法引用不等于所有事实都正确，需要固定问题验收。
 
