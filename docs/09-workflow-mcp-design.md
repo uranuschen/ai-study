@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-> 状态：已实现 LangGraph 单节点 Console 学习入口；业务 Tool、Agent loop 和 MCP 尚未实现。本文件不是执行数据库建表、初始化或连接数据库的授权。
+> 状态：已实现 LangGraph 单节点和双节点 State 传值 Console 学习入口；业务 Tool、Agent loop 和 MCP 尚未实现。本文件不是执行数据库建表、初始化或连接数据库的授权。
 
 ## 已确认的边界
 
@@ -57,13 +57,13 @@ RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六�
 
 ## 新目录、入口与 MCP 调用方向
 
-以下是逐课新增的目标位置；单节点入口和 `workflows/` 已创建，其余仍是计划，旧 RAG 入口不改动：
+以下是逐课新增的目标位置；Console 入口和 `workflows/` 已创建，内部有单节点与双节点传值示例，其余仍是计划，旧 RAG 入口不改动：
 
 ```text
-main_workflow.py                 # 已实现单节点 Console；订单诊断留待后续
+main_workflow.py                 # 已运行双节点 State 传值；订单诊断留待后续
 main_mcp_server.py               # 本地 MCP Server 入口
 main_mcp_client.py               # 独立 MCP Client 演示入口
-src/agent_learning/workflows/   # 已实现单节点；后续再加路由与有限重试
+src/agent_learning/workflows/   # 已实现单节点与双节点传值；后续再加路由与有限重试
 src/agent_learning/business/    # Tool 与 JSON/PostgreSQL 读取实现
 src/agent_learning/mcp_app/     # MCP Server/Client 适配代码
 data/business_demo.json         # 模拟业务数据

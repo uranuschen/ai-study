@@ -7,29 +7,31 @@ BASE_DIR = Path(__file__).resolve().parent
 # 直接点击 Run / Debug 时，让 Python 找到 src 下的代码。
 sys.path.insert(0, str(BASE_DIR / "src"))
 
-from agent_learning.workflows.single_node import build_graph
+from agent_learning.workflows.state_flow import build_graph
 
 
-# 方法功能：从 Console 读取一句话，执行一次单节点工作流并输出结果。
-# 可以在 graph.invoke() 或 echo_node() 处打断点查看 State。
+# 方法功能：从 Console 读取一句话，执行两个节点并显示 State 传值结果。
+# 可以在 graph.invoke()、prepare_node() 或 answer_node() 处打断点查看 State。
 def main():
-    # 先创建固定的 START → echo → END 工作流。
+    # 创建固定的 START → prepare → answer → END 工作流。
     graph = build_graph()
-    # 从终端读取一条输入；这个输入就是本次工作流的 question。
-    question = input("请输入一句话：").strip()
-    # 空输入没有可处理的内容，直接提示并结束。
-    if not question:
+    # 从终端读取原始文字，留给第一个节点去除首尾空格。
+    question = input("请输入一句话：")
+    # 全空白输入没有可处理的内容，直接提示并结束。
+    if not question.strip():
         # 在 Console 显示输入要求。
         print("请输入非空内容。")
         # 结束本次运行。
         return
-    # invoke 是 LangGraph 的执行入口，字典是工作流的初始 State。
-    result = graph.invoke({"question": question, "answer": ""})
-    # 读取节点写回的 answer，显示在 Console。
-    print(result["answer"])
+    # invoke 的字典是初始 State；后两个字段先留空，分别由两个节点写入。
+    result = graph.invoke({"question": question, "clean_question": "", "answer": ""})
+    # 显示第一个节点写入 State 的结果。
+    print("第一个节点写入 State：", result["clean_question"])
+    # 显示第二个节点读取 State 后生成的结果。
+    print("第二个节点输出：", result["answer"])
 
 
 # 在 IDE 点击 Run / Debug，或直接运行本文件时才调用 main()。
 if __name__ == "__main__":
-    # 启动单节点 Console 演示。
+    # 启动两个节点传递 State 的 Console 演示。
     main()

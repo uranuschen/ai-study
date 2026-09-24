@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；另有独立的 LangGraph 单节点 Console 学习入口。表结构继续以 sql/ 中现有文件为准。
+当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；另有独立的 LangGraph Console 学习入口，目前做到两个节点之间传递 State。表结构继续以 sql/ 中现有文件为准。
 
 ## 直接运行和 Debug
 
@@ -21,15 +21,15 @@
 
 真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
 
-## LangGraph 单节点 Console
+## LangGraph Console：节点间传 State
 
-运行 [main_workflow.py](main_workflow.py)，在 Console 输入一句话并按回车；IDE Debug 时使用可输入的终端。这个入口只调用 [single_node.py](src/agent_learning/workflows/single_node.py) 里的 `START → echo → END` 图，不访问数据库或模型，也不执行 RAG 问答。
+运行 [main_workflow.py](main_workflow.py)，在 Console 输入一句话并按回车；IDE Debug 时使用可输入的终端。现在入口调用 [state_flow.py](src/agent_learning/workflows/state_flow.py) 里的 `START → prepare → answer → END` 图：`prepare` 写入 `clean_question`，`answer` 从 State 读出它。上一课的 [single_node.py](src/agent_learning/workflows/single_node.py) 保留用于对照。两个例子都不访问数据库或模型，也不执行 RAG 问答。
 
 ```bash
 .venv/bin/python main_workflow.py
 ```
 
-例如输入 `你好，LangGraph`，会输出 `单节点收到：你好，LangGraph`。下一课再在这个独立目录里学习多个节点和 State 传值；当前单节点还不是 Agent loop。依赖 `langgraph` 已列在 `pyproject.toml`，新环境安装项目依赖后即可运行。
+例如输入 `  你好，LangGraph  `，第一个节点会写入 `你好，LangGraph`，第二个节点输出 `第二个节点收到：你好，LangGraph`。可以在 `main_workflow.py` 的 `graph.invoke()` 和 `state_flow.py` 的两个节点打断点，观察初始 State、节点更新和最终 State。下一课才加条件路由；当前仍不是 Agent loop。依赖 `langgraph` 已列在 `pyproject.toml`，新环境安装项目依赖后即可运行。
 
 ## 配置在哪里
 
@@ -44,8 +44,9 @@
 
 1. `main_ingest.py`：看文件路径和是否写库，然后进入 [IngestionPipeline.run()](src/agent_learning/rag/ingestion.py)。
 2. `main_ask.py`：看问题和筛选条件，然后进入 [RAGPipeline.ask()](src/agent_learning/rag/answering.py)。
-3. [cli.py](src/agent_learning/cli.py)：只负责逐个创建对象，不再解析命令。每个对象都有独立变量，便于断点查看。
-4. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
+3. `main_workflow.py`：看初始 State，再进入 [prepare_node()](src/agent_learning/workflows/state_flow.py) 和 [answer_node()](src/agent_learning/workflows/state_flow.py)。
+4. [cli.py](src/agent_learning/cli.py)：只负责逐个创建 RAG 对象，不再解析命令。每个对象都有独立变量，便于断点查看。
+5. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
 
 所有类和方法保留中文职责说明。已经移除 Protocol 接口、dataclass、自动字段转换、动态模型参数适配和自定义连接上下文。BM25 使用 old/ 已用过的 `rank_bm25.BM25Okapi`，CrossEncoder 使用旧环境的 sentence-transformers 3.x 写法。
 
