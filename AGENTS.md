@@ -7,7 +7,7 @@
 - 不能执行任何 Git 或 SVN 操作，包括只读查询、初始化、提交、分支、拉取和推送。
 - `old/` 是历史备份，只读保留；原有 `python_basic/`、`rag/` 和 `文档/` 保留用于对照，不作为新程序入口。
 - 不读取或输出 `.env` 中的密钥；不把密钥复制到备份、日志或示例配置。
-- 当前保留 RAG 资料入库和问答两条主流程；另在独立目录实现了 LangGraph 单节点及双节点 State 传值的 Console 学习例子。Agent loop、MCP、微调仍留待后续逐课实现。
+- 当前保留 RAG 资料入库和问答两条主流程；另在独立目录实现了 LangGraph 单节点、双节点 State 传值及普通回答 / 本地 Tool 条件路由的 Console 学习例子。业务 Tool、Agent loop、MCP、微调仍留待后续逐课实现。
 - 后续工作流、业务数据和 MCP 的架构约定见 `docs/09-workflow-mcp-design.md`；该设计文档不授权执行建表、初始化或其他数据库操作。
 - 代码以 `old/` 中已学过的普通类、函数、字典和库调用为基础，优先直观写法；不要重新加入 Protocol、dataclass、反射配置、argparse 等额外知识点。RAG 入口使用根目录 main_ingest.py、main_ask.py，参数直接在文件中修改；LangGraph Console 入口使用根目录 main_workflow.py，代码放在 src/agent_learning/workflows/。
 - 表结构暂时以 `sql/` 内现有 SQL 文件为准；简化 Python 时不要顺带调整表结构。

@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-> 状态：已实现 LangGraph 单节点和双节点 State 传值 Console 学习入口；业务 Tool、Agent loop 和 MCP 尚未实现。本文件不是执行数据库建表、初始化或连接数据库的授权。
+> 状态：已实现 LangGraph 单节点、双节点 State 传值和普通回答 / 本地 Tool 条件路由 Console 学习入口；业务 Tool、Agent loop 和 MCP 尚未实现。本文件不是执行数据库建表、初始化或连接数据库的授权。
 
 ## 已确认的边界
 
@@ -9,7 +9,7 @@
 - 工作流与 MCP 共用同一批只读业务 Tool；租户和可读权限来自可信入口，不能让模型根据问题自行提高权限。所有 SQL 使用固定查询与参数绑定，不开放任意 SQL Tool。
 - 现有知识库中的订单和退款资料是带 `snapshot_at` 的快照。回答当前状态时，以业务 Tool 返回的最新可用状态及其更新时间为准；RAG 用于制度、流程及注明时间的历史资料，避免旧快照覆盖较新的业务状态。
 
-当前 `RAGPipeline.ask()` 是固定的 RAG 问答链路：检索、精排、组装证据、调用 LLM、校验回答；它不会根据工具结果自主选择下一个 Tool 并循环。历史 `python_basic/toolcalling/` 练习写过工具调用循环，但未接入当前正式入口。因此后续工作流阶段要在新入口中学习 State、条件路由与有上限的 Agent 循环。
+当前 `RAGPipeline.ask()` 是固定的 RAG 问答链路：检索、精排、组装证据、调用 LLM、校验回答；它不会根据工具结果自主选择下一个 Tool 并循环。历史 `python_basic/toolcalling/` 练习写过工具调用循环，但未接入当前正式入口。独立的 Console 入口已练习 State 和固定前缀条件路由；有上限的 Agent 循环留待后续课程。
 
 RAG、Agent 工作流和 MCP 可以用于自然语言助手，也可以由 Issue、CI 日志、运维告警、库存预警等结构化事件触发；它们不要求用户先提出问题。RAG 提供相关资料作为证据，Agent 或工作流根据任务和 Tool 结果决定后续步骤，MCP 负责让外部 AI 客户端发现并调用 Tool。不是每个场景都需要同时使用三者；判断依据是是否存在非结构化资料、需要随结果变化的步骤，以及跨客户端复用 Tool 的需求。
 
@@ -57,13 +57,13 @@ RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六�
 
 ## 新目录、入口与 MCP 调用方向
 
-以下是逐课新增的目标位置；Console 入口和 `workflows/` 已创建，内部有单节点与双节点传值示例，其余仍是计划，旧 RAG 入口不改动：
+以下是逐课新增的目标位置；Console 入口和 `workflows/` 已创建，内部有单节点、双节点传值及本地 Tool 条件路由示例，其余仍是计划，旧 RAG 入口不改动：
 
 ```text
-main_workflow.py                 # 已运行双节点 State 传值；订单诊断留待后续
+main_workflow.py                 # 已运行普通回答 / 本地 Tool 条件路由；订单诊断留待后续
 main_mcp_server.py               # 本地 MCP Server 入口
 main_mcp_client.py               # 独立 MCP Client 演示入口
-src/agent_learning/workflows/   # 已实现单节点与双节点传值；后续再加路由与有限重试
+src/agent_learning/workflows/   # 已实现单节点、双节点传值与条件路由；有限重试留待后续
 src/agent_learning/business/    # Tool 与 JSON/PostgreSQL 读取实现
 src/agent_learning/mcp_app/     # MCP Server/Client 适配代码
 data/business_demo.json         # 模拟业务数据

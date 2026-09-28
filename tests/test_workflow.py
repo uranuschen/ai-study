@@ -1,5 +1,7 @@
 import unittest
+from unittest.mock import patch
 
+from agent_learning.workflows.conditional_route import build_graph as build_conditional_route
 from agent_learning.workflows.single_node import build_graph
 from agent_learning.workflows.state_flow import build_graph as build_state_flow
 
@@ -30,6 +32,43 @@ class StateFlowTests(unittest.TestCase):
         self.assertEqual(result["clean_question"], "测试问题")
         # 第二个节点读取第一个节点的结果，不沿用原始空格。
         self.assertEqual(result["answer"], "第二个节点收到：测试问题")
+
+
+# 类职责：通过真实 LangGraph 图验证两个分支互斥，且 Tool 只在需要时调用。
+class ConditionalRouteTests(unittest.TestCase):
+    # 方法功能：普通问题只经过普通分支，不调用统计 Tool。
+    def test_normal_question_skips_tool(self):
+        # 创建本课的条件路由图。
+        graph = build_conditional_route()
+        # 给 Tool 打桩，以便检查普通分支不会误调用它。
+        with patch("agent_learning.workflows.conditional_route.count_characters") as tool:
+            # 从初始 State 执行完整工作流。
+            result = graph.invoke({"question": "  你好  ", "clean_question": "", "branch": "", "answer": ""})
+        # prepare 节点先整理问题，普通分支再生成演示输出。
+        self.assertEqual(result["clean_question"], "你好")
+        # 记录普通分支确实被选中。
+        self.assertEqual(result["branch"], "normal")
+        # 回显输出表明执行了普通节点。
+        self.assertEqual(result["answer"], "普通问答分支收到：你好")
+        # 普通分支不应调用统计 Tool。
+        tool.assert_not_called()
+
+    # 方法功能：带指定前缀的问题只走 Tool 分支，并统计前缀后的文字。
+    def test_prefixed_question_calls_tool(self):
+        # 创建本课的条件路由图。
+        graph = build_conditional_route()
+        # 固定 Tool 返回值，明确检查它收到的文字。
+        with patch("agent_learning.workflows.conditional_route.count_characters", return_value=4) as tool:
+            # 前后空格应先由 prepare 节点处理，然后才能判断前缀。
+            result = graph.invoke({"question": "  统计字数：人工智能  ", "clean_question": "", "branch": "", "answer": ""})
+        # 保留整理后的问题，便于在 State 中检查。
+        self.assertEqual(result["clean_question"], "统计字数：人工智能")
+        # 记录 Tool 分支确实被选中。
+        self.assertEqual(result["branch"], "tool")
+        # Tool 返回值进入最终输出。
+        self.assertEqual(result["answer"], "Tool 统计结果：人工智能，共 4 个字符。")
+        # 只传待统计的正文，不把指令前缀送给 Tool。
+        tool.assert_called_once_with("人工智能")
 
 
 # 允许单独运行这个离线测试文件。
