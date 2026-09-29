@@ -1,0 +1,37 @@
+{
+  "description": "第60课离线订单查询样例。金额使用字符串，状态为指定时间的模拟数据。",
+  "orders": [
+    {
+      "tenant_id": "acme",
+      "order_id": "A1001",
+      "status": "待支付",
+      "amount": "199.00",
+      "currency": "CNY",
+      "updated_at": "2026-09-28T09:00:00+08:00"
+    },
+    {
+      "tenant_id": "acme",
+      "order_id": "A1002",
+      "status": "已支付",
+      "amount": "299.00",
+      "currency": "CNY",
+      "updated_at": "2026-09-28T09:05:00+08:00"
+    },
+    {
+      "tenant_id": "acme",
+      "order_id": "A1003",
+      "status": "已完成",
+      "amount": "499.00",
+      "currency": "CNY",
+      "updated_at": "2026-09-28T09:10:00+08:00"
+    },
+    {
+      "tenant_id": "other",
+      "order_id": "A1002",
+      "status": "已取消",
+      "amount": "79.00",
+      "currency": "CNY",
+      "updated_at": "2026-09-28T09:15:00+08:00"
+    }
+  ]
+}

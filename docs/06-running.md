@@ -47,6 +47,27 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 | raw | 模型原始回答 |
 | answer | 检查后的最终答案 |
 
+## 第 60 课：工作流调用订单 Tool
+
+Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需命令行参数，Console 输入订单号。IDE 使用可输入的终端，不使用只读输出窗口。入口顶部的 `DATA_FILE` 指向 `data/business_demo.json`，`TENANT_ID` 默认 `acme`。
+
+```bash
+.venv/bin/python -B main_workflow.py
+```
+
+建议按下面顺序打断点：
+
+| 文件 / 方法 | 观察内容 |
+|---|---|
+| `main_workflow.py` 的 `graph.invoke(initial_state)` | 原始订单号、入口租户、尚未填充的 Tool 结果 |
+| `workflows/business_tool.py` 的 `prepare_node()` | `question` 去空格、转大写后写入 `order_id` |
+| `workflows/business_tool.py` 的 `get_order_node()` | 将 `order_id`、`tenant_id`、数据文件传给 Tool |
+| `business/tools.py` 的 `get_order()` | JSON 内容、同时匹配租户与订单号、统一返回字典 |
+| `workflows/business_tool.py` 的 `choose_result_route()` | Tool 结果已经合并到 State，根据 `success` 选择标签 |
+| `workflows/business_tool.py` 的 `answer_node()` / `error_answer_node()` | 最终 `branch` 和 `answer` |
+
+成功案例输入 `A1002`；业务失败案例输入 `A9999`；空参数案例只按回车。文件失败案例可临时把 `DATA_FILE` 改为一个不存在的文件，再 Debug，观察 `error_answer_node()`，之后恢复配置。完整学习步骤见 [第 60 课说明](10-workflow-tools.md)。
+
 ## 配置和依赖
 
 数据库在 `.env.db`，DeepSeek Key 在 `.env`；`load_settings()` 使用旧代码熟悉的 `load_dotenv()` 和 `os.getenv()` 读取。支持旧 `DEEPSEEK_API_KEY`，非空的 `LLM_API_KEY` 优先。配置文件位置不随 IDE 工作目录改变。详情见 [配置说明](08-db-config.md)。

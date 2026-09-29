@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-> 状态：已实现 LangGraph 单节点、双节点 State 传值和普通回答 / 本地 Tool 条件路由 Console 学习入口；业务 Tool、Agent loop 和 MCP 尚未实现。本文件不是执行数据库建表、初始化或连接数据库的授权。
+> 状态：已实现 LangGraph 单节点、双节点 State 传值、普通回答 / 本地 Tool 条件路由，以及第 60 课 JSON 订单 Tool 与成功 / 失败回答；支付、退款 Tool、Agent loop 和 MCP 尚未接入新工作流。本文件不是执行数据库建表、初始化或连接数据库的授权。
 
 ## 已确认的边界
 
@@ -17,7 +17,7 @@ RAG、Agent 工作流和 MCP 可以用于自然语言助手，也可以由 Issue
 
 ## 学习阶段和数据准备
 
-1. **先用 JSON 学工作流。** 拟新增独立的 `data/business_demo.json`，保存少量订单、支付、退款示例。JSON 是模拟业务系统的数据，不通过 `main_ingest.py` 向量入库。
+1. **先用 JSON 学工作流。** 已新增独立的 `data/business_demo.json`，第 60 课只保存少量订单样例；支付、退款示例随下一课增加。JSON 是模拟业务系统的数据，不通过 `main_ingest.py` 向量入库。当前 `get_order` 只读查询该文件，返回 `success/data/error`，成功数据带 `source=json` 与 `updated_at`；金额先使用字符串保留精确表示。
 2. **再接 PostgreSQL。** 在课程进入真实数据库 Tool 时，分别提供待审阅的建表 SQL 和演示数据 `INSERT` SQL，例如 `sql/05_business_schema.sql` 与 `sql/06_business_seed.sql`。先由用户手动建表，再手动录入演示数据，最后用只读查询核对；程序启动时不自动建表或初始化。
 3. **真实数据要另有更新来源。** `INSERT` 演示数据只用于学习，不会自动变成实时订单系统。后续由业务系统、只读 API 或经确认的数据同步方式提供最新状态，并明确返回更新时间。
 
@@ -51,22 +51,22 @@ LangGraph 节点 / MCP Tool
 RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六表
 ```
 
-先用普通类和明确的创建函数实现两种读取方式，不引入 Protocol、反射配置或复杂插件机制。拟在新入口使用 `BUSINESS_DATA_SOURCE=json|postgres` 选择；JSON 路径单独配置，业务数据库连接地址和凭证单独保存在数据库配置文件，不复制到源码、文档或日志。现有 RAG 的 `DATABASE_URL` 不随业务数据源开关改变。
+当前第 60 课先用普通 `get_order(order_id, tenant_id, data_file)` 函数读取 JSON，入口直接配置 `DATA_FILE`，便于学习参数、返回值和 State 的关系。后续用普通类和明确的创建函数实现两种读取方式，不引入 Protocol、反射配置或复杂插件机制。拟在新入口使用 `BUSINESS_DATA_SOURCE=json|postgres` 选择；JSON 路径单独配置，业务数据库连接地址和凭证单独保存在数据库配置文件，不复制到源码、文档或日志。现有 RAG 的 `DATABASE_URL` 不随业务数据源开关改变。
 
 **“改一个字段即可切换”有前提：两种读取实现、连接信息和统一返回格式都已经准备好。** 从当前 `ragdb` 换到结构相同的另一套 PostgreSQL，还需要数据和连接地址到位；若将来换 MySQL，必须另写并测试 MySQL 读取实现及字段映射，单靠选择字段不会自动转换 SQL。现有 RAG 使用 pgvector，不承诺随业务库开关一起迁移到 MySQL。
 
 ## 新目录、入口与 MCP 调用方向
 
-以下是逐课新增的目标位置；Console 入口和 `workflows/` 已创建，内部有单节点、双节点传值及本地 Tool 条件路由示例，其余仍是计划，旧 RAG 入口不改动：
+以下是逐课新增的目标位置；Console、`workflows/`、JSON 订单样例和 `business/tools.py` 已创建，PostgreSQL 与 MCP 仍是后续计划，旧 RAG 入口不改动：
 
 ```text
-main_workflow.py                 # 已运行普通回答 / 本地 Tool 条件路由；订单诊断留待后续
+main_workflow.py                 # 第 60 课：调用 JSON get_order 并选择成功 / 失败回答
 main_mcp_server.py               # 本地 MCP Server 入口
 main_mcp_client.py               # 独立 MCP Client 演示入口
-src/agent_learning/workflows/   # 已实现单节点、双节点传值与条件路由；有限重试留待后续
-src/agent_learning/business/    # Tool 与 JSON/PostgreSQL 读取实现
+src/agent_learning/workflows/   # 已接入订单 Tool；多步诊断与受控循环留待后续
+src/agent_learning/business/    # 已实现 JSON get_order；支付、退款与 PostgreSQL 留待后续
 src/agent_learning/mcp_app/     # MCP Server/Client 适配代码
-data/business_demo.json         # 模拟业务数据
+data/business_demo.json         # 已有订单模拟数据，下一课增加支付 / 退款
 sql/05_business_schema.sql      # 后续建表文本，用户手动执行
 sql/06_business_seed.sql        # 后续演示 INSERT 文本，用户手动执行
 ```

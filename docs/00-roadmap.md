@@ -11,10 +11,11 @@
 | 36–46 文档加载 / 切分 / 入库 | DocumentLoader、DocumentChunker、IngestionPipeline |
 | 47–52 检索 / 来源 / 精排 / 混合 / 过滤 | HybridRetriever、RAGPipeline 及独立组件 |
 | 53–55 测试 / 优化 / 验收 | 15 个固定用例、离线回归、Chunk/Top-K/Prompt 实验 |
-| 后续 Agent 与更深入课程 | 已完成独立的 LangGraph 单节点、双节点 State 传值和普通回答 / 本地 Tool 条件路由 Console；业务 Tool、Agent loop、MCP 等仍按课程逐步实现 |
+| 56–60 Agent 与工作流入门 | 已完成概念、单节点、双节点 State 传值、普通回答 / 本地 Tool 条件路由，以及调用 JSON 订单 Tool 的成功 / 失败路由 |
+| 61–70 Agent 与工作流进阶 | 多步订单工作流、受控 Agent 循环、执行预算与失败恢复、RAG Tool、Checkpoint、会话 Memory、人工确认、Tracing 和综合验收 |
 
 课程表自身将第 56–70 课标为 Agent 与工作流，第 101–120 课标为模型微调与评测，后续还有部署等内容。最初按用户要求只整理 RAG 入库和问答；随后按用户的新要求，逐课增加独立的 LangGraph Console，不根据课程标题自动扩大到其他功能。
 
-RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。LangGraph 已练习单节点、两节点之间传递 State，以及按固定前缀选择普通回答或本地字符统计 Tool；后续课程再学习业务 Tool、工具循环和最大步数，届时可将 `RAGPipeline.ask()` 包装为只读 Tool。
+RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。当前原表第 60 课「接入阶段 3 Tools」使用普通 Python `get_order` 函数读取本地 JSON，由 LangGraph 节点写入结果并按 `success` 选择下一节点；说明与 Debug 入口见 [第 60 课](10-workflow-tools.md)。后续先练多步工作流和受控循环，再把 `RAGPipeline.ask()` 包装为 `ask_knowledge_base` Tool。
 
 协作限制：未获同意不接触数据库，不删除目录，不执行 Git/SVN。

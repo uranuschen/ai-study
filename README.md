@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；另有独立的 LangGraph Console 学习入口，目前做到按条件在普通回答和本地 Tool 之间路由。表结构继续以 sql/ 中现有文件为准。
+当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 60 课「接入阶段 3 Tools」，调用本地 JSON 订单 Tool，并按查询结果选择成功或失败回答。表结构继续以 sql/ 中现有文件为准。
 
 ## 直接运行和 Debug
 
@@ -21,15 +21,17 @@
 
 真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
 
-## LangGraph Console：条件路由（普通问答 vs Tool）
+## LangGraph Console：第 60 课接入订单 Tool
 
-运行 [main_workflow.py](main_workflow.py)，在 Console 输入一句话并按回车；IDE Debug 时使用可输入的终端。现在入口调用 [conditional_route.py](src/agent_learning/workflows/conditional_route.py)：`START → prepare → 条件路由 → 普通回答或 Tool → END`。`prepare` 去掉输入首尾空格并写入 `clean_question`；路由依据整理后的文字是否以固定前缀 `统计字数：` 开头，选择普通回答节点或调用本地 `count_characters` 函数的 Tool 节点。最终 State 包含 `question`、`clean_question`、`branch` 和 `answer`，可以看到实际走了哪条分支。
+运行 [main_workflow.py](main_workflow.py)，在 Console 直接输入订单号并按回车；IDE Debug 时使用可输入的终端。入口调用 [business_tool.py](src/agent_learning/workflows/business_tool.py)：`START → prepare → get_order → 结果路由 → 成功或失败回答 → END`。节点从 State 读取订单号和可信租户，调用 [业务 Tool](src/agent_learning/business/tools.py)，再把统一的 `success/data/error` 结果写回 State。Tool 只读取 [本地模拟订单](data/business_demo.json)，不依赖 LangGraph，也不连接数据库或模型。
 
 ```bash
 .venv/bin/python main_workflow.py
 ```
 
-例如输入 `  你好，LangGraph  ` 会走普通回答分支；再次运行并输入 `  统计字数：你好  ` 会走 Tool 分支，对前缀后面的 `你好` 统计出 2 个字符。可以在 `main_workflow.py` 的 `graph.invoke()`，以及 `conditional_route.py` 的 `prepare_node()`、条件路由函数和两个分支节点打断点，观察 `clean_question`、选择的分支及最终 `answer`。[single_node.py](src/agent_learning/workflows/single_node.py) 和 [state_flow.py](src/agent_learning/workflows/state_flow.py) 分别保留单节点、双节点传 State 的上一课例子。三个例子都不访问数据库或模型；本课 Tool 仅是本地教学函数，尚未接业务 Tool、RAG Tool、Agent loop 或 MCP。依赖 `langgraph` 已列在 `pyproject.toml`，新环境安装项目依赖后即可运行。
+输入 `  a1002  ` 会整理成 `A1002`，查询到 `acme` 的已支付订单，金额为 `299.00 CNY`；输入 `A9999` 或只按回车会进入失败回答。入口顶部的 `TENANT_ID` 默认是 `acme`，改为 `other` 后，同号 `A1002` 返回该租户的已取消订单，金额为 `79.00 CNY`。金额保留字符串表示，回答明确标注模拟数据和更新时间。
+
+Debug 解释器选择项目 `.venv/bin/python`，打开 `main_workflow.py` 点击 Debug，在 `graph.invoke()`、`prepare_node()`、`get_order_node()`、业务函数 `get_order()` 和 `choose_result_route()` 打断点，观察 `order_id`、`tool_result` 和分支。完整步骤见 [第 60 课说明](docs/10-workflow-tools.md)。[single_node.py](src/agent_learning/workflows/single_node.py)、[state_flow.py](src/agent_learning/workflows/state_flow.py) 和 [conditional_route.py](src/agent_learning/workflows/conditional_route.py) 保留前三个运行例子供对照；本课后续再接支付、退款、Agent loop、RAG 和 MCP。
 
 ## 配置在哪里
 
@@ -44,7 +46,7 @@
 
 1. `main_ingest.py`：看文件路径和是否写库，然后进入 [IngestionPipeline.run()](src/agent_learning/rag/ingestion.py)。
 2. `main_ask.py`：看问题和筛选条件，然后进入 [RAGPipeline.ask()](src/agent_learning/rag/answering.py)。
-3. `main_workflow.py`：看初始 State，再进入 [prepare_node()](src/agent_learning/workflows/conditional_route.py)、条件路由函数和选中的分支节点；前两课的节点可在 `single_node.py`、`state_flow.py` 中对照。
+3. `main_workflow.py`：看初始 State，再进入 [订单 Tool 节点](src/agent_learning/workflows/business_tool.py) 和 [get_order()](src/agent_learning/business/tools.py)，观察统一返回结果如何写回 State、如何进入成功或失败分支；前几课的文件保留对照。
 4. [cli.py](src/agent_learning/cli.py)：只负责逐个创建 RAG 对象，不再解析命令。每个对象都有独立变量，便于断点查看。
 5. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
 
