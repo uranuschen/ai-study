@@ -1,5 +1,5 @@
 {
-  "description": "第60课离线订单查询样例。金额使用字符串，状态为指定时间的模拟数据。",
+  "description": "第60、61课离线订单、支付、退款查询样例。金额使用字符串，状态为指定时间的模拟数据。所有 Tool 仅查询，不执行支付或退款。",
   "orders": [
     {
       "tenant_id": "acme",
@@ -26,11 +26,114 @@
       "updated_at": "2026-09-28T09:10:00+08:00"
     },
     {
+      "tenant_id": "acme",
+      "order_id": "A1004",
+      "status": "已支付",
+      "amount": "88.00",
+      "currency": "CNY",
+      "updated_at": "2026-09-28T09:20:00+08:00"
+    },
+    {
+      "tenant_id": "acme",
+      "order_id": "A1005",
+      "status": "已支付",
+      "amount": "59.00",
+      "currency": "CNY",
+      "updated_at": "2026-09-28T09:25:00+08:00"
+    },
+    {
       "tenant_id": "other",
       "order_id": "A1002",
       "status": "已取消",
       "amount": "79.00",
       "currency": "CNY",
+      "updated_at": "2026-09-28T09:15:00+08:00"
+    }
+  ],
+  "payments": [
+    {
+      "tenant_id": "acme",
+      "order_id": "A1002",
+      "payment_id": "P10020",
+      "status": "支付失败",
+      "amount": "299.00",
+      "currency": "CNY",
+      "method": "银行卡",
+      "updated_at": "2026-09-28T09:03:00+08:00"
+    },
+    {
+      "tenant_id": "acme",
+      "order_id": "A1002",
+      "payment_id": "P10021",
+      "status": "支付成功",
+      "amount": "299.00",
+      "currency": "CNY",
+      "method": "支付宝",
+      "updated_at": "2026-09-28T09:05:00+08:00"
+    },
+    {
+      "tenant_id": "acme",
+      "order_id": "A1003",
+      "payment_id": "P10031",
+      "status": "支付成功",
+      "amount": "499.00",
+      "currency": "CNY",
+      "method": "微信支付",
+      "updated_at": "2026-09-28T09:08:00+08:00"
+    },
+    {
+      "tenant_id": "acme",
+      "order_id": "A1005",
+      "payment_id": "P10051",
+      "status": "支付失败",
+      "amount": "59.00",
+      "currency": "CNY",
+      "method": "银行卡",
+      "updated_at": "2026-09-28T09:24:00+08:00"
+    },
+    {
+      "tenant_id": "other",
+      "order_id": "A1002",
+      "payment_id": "POTHER21",
+      "status": "支付成功",
+      "amount": "79.00",
+      "currency": "CNY",
+      "method": "微信支付",
+      "updated_at": "2026-09-28T09:11:00+08:00"
+    }
+  ],
+  "refunds": [
+    {
+      "tenant_id": "acme",
+      "order_id": "A1002",
+      "payment_id": "P10021",
+      "refund_id": "R10021",
+      "status": "退款成功",
+      "amount": "99.00",
+      "currency": "CNY",
+      "reason": "退回一件商品",
+      "updated_at": "2026-09-28T10:00:00+08:00"
+    },
+    {
+      "tenant_id": "acme",
+      "order_id": "A1002",
+      "payment_id": "P10021",
+      "refund_id": "R10022",
+      "status": "退款中",
+      "amount": "50.00",
+      "currency": "CNY",
+      "reason": "申请部分退款",
+      "updated_at": "2026-09-28T10:05:00+08:00"
+    },
+    {
+      "tenant_id": "other",
+      "order_id": "A1002",
+      "payment_id": "POTHER21",
+      "refund_id": "ROTHER21",
+      "status": "退款成功",
+      "amount": "79.00",
+      "currency": "CNY",
+      "reason": "取消订单",
       "updated_at": "2026-09-28T09:15:00+08:00"
     }
   ]

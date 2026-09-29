@@ -68,3 +68,77 @@ def get_order(order_id: str, tenant_id: str, data_file: Path = DEFAULT_DATA_FILE
             return tool_result(True, data=data)
     # 未找到与当前租户匹配的订单时，返回正常的业务失败结果。
     return tool_result(False, error="订单不存在或当前租户不可读取。")
+
+
+# 方法功能：按租户和订单号读取支付或退款列表，供两个只读 Tool 共用。
+def read_order_records(order_id: str, tenant_id: str, collection_name: str, required_fields: tuple, data_file: Path) -> dict:
+    # 空订单号不进入文件查询。
+    if not isinstance(order_id, str) or not order_id.strip():
+        # 参数错误保持统一返回格式。
+        return tool_result(False, error="请输入非空订单号。")
+    # 租户仍然必须由可信入口提供。
+    if not isinstance(tenant_id, str) or not tenant_id.strip():
+        # 没有租户身份就拒绝读取。
+        return tool_result(False, error="缺少租户身份，无法查询业务记录。")
+    # 与订单 Tool 使用相同的订单号整理规则。
+    clean_order_id = order_id.strip().upper()
+    # 去掉租户两端空格，不改变租户大小写。
+    clean_tenant_id = tenant_id.strip()
+    # 将文件读取问题转换为可保存在 State 中的失败结果。
+    try:
+        # 以只读方式打开 JSON 文件。
+        with Path(data_file).open("r", encoding="utf-8") as file:
+            # 读取普通字典和列表，不连接数据库。
+            business_data = json.load(file)
+    # 文件不存在或没有读取权限时进入这个分支。
+    except OSError as error:
+        # Debug 时可以在这里查看原始异常，但不向用户暴露文件详情。
+        return tool_result(False, error="读取业务数据文件失败，请检查文件路径或权限。")
+    # 文件编码或 JSON 语法错误时进入这个分支。
+    except (UnicodeError, json.JSONDecodeError) as error:
+        # 数据损坏不能被当作没有业务记录。
+        return tool_result(False, error="业务数据文件不是有效的 UTF-8 JSON。")
+    # 所查询的集合必须明确存在，并且是列表。
+    if not isinstance(business_data, dict) or not isinstance(business_data.get(collection_name), list):
+        # 缺少列表属于格式错误，区别于存在但为空的列表。
+        return tool_result(False, error=f"业务数据格式错误：需要 {collection_name} 列表。")
+    # 一个订单可能有多条记录，因此先准备结果列表。
+    records = []
+    # 遍历当前 Tool 对应的支付或退款集合。
+    for record in business_data[collection_name]:
+        # 每条业务记录必须是字典。
+        if not isinstance(record, dict):
+            # 不让错误类型进入后续字段读取。
+            return tool_result(False, error=f"业务数据格式错误：{collection_name} 中每条记录必须是对象。")
+        # 检查这个 Tool 所要求的必要字段。
+        for field in required_fields:
+            # 金额也保持非空字符串，不转换成浮点数。
+            if not isinstance(record.get(field), str) or not record[field].strip():
+                # 返回具体的格式错误字段。
+                return tool_result(False, error=f"业务数据格式错误：{collection_name} 字段 {field} 必须是非空字符串。")
+        # 租户和订单号必须同时匹配，不能混入其他租户的同号记录。
+        if record["tenant_id"] == clean_tenant_id and record["order_id"] == clean_order_id:
+            # 复制匹配记录，保留原来的业务字段和更新时间。
+            data = dict(record)
+            # 标记当前查询的数据来源。
+            data["source"] = "json"
+            # 收集所有匹配记录，而不是只返回第一条。
+            records.append(data)
+    # 没有匹配记录时也算查询成功，data 为 []，不是 Tool 执行失败。
+    return tool_result(True, data=records)
+
+
+# 方法功能：只读查询当前租户的订单支付记录，不执行支付。
+def get_payment(order_id: str, tenant_id: str, data_file: Path = DEFAULT_DATA_FILE) -> dict:
+    # 规定支付记录需要的字段，金额保持字符串。
+    required_fields = ("tenant_id", "order_id", "payment_id", "status", "amount", "currency", "method", "updated_at")
+    # 复用普通函数读取 payments 列表，返回统一 Tool 结果。
+    return read_order_records(order_id, tenant_id, "payments", required_fields, data_file)
+
+
+# 方法功能：只读查询当前租户的订单退款记录，不发起退款。
+def get_refund(order_id: str, tenant_id: str, data_file: Path = DEFAULT_DATA_FILE) -> dict:
+    # payment_id 可以没有，但退款本身的标识、金额、原因和时间必须存在。
+    required_fields = ("tenant_id", "order_id", "refund_id", "status", "amount", "currency", "reason", "updated_at")
+    # 复用普通函数读取 refunds 列表；无退款记录返回成功的空列表。
+    return read_order_records(order_id, tenant_id, "refunds", required_fields, data_file)

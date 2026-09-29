@@ -2,6 +2,8 @@
 
 本课把阶段 3 的业务函数调用方式接到 LangGraph 中。先使用本地 JSON 的 `get_order`，观察参数和返回值怎样经过 State；Console 直接输入订单号，租户由入口提供。
 
+本文件保留第 60 课说明，`workflows/business_tool.py` 未改动。根目录 `main_workflow.py` 已切换到第 61 课多步订单工作流，当前运行和 Debug 步骤见 [第 61 课](11-order-workflow.md)；下文记录的是第 60 课当时的入口和断点。
+
 ```text
 START
   ↓
@@ -92,4 +94,4 @@ PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -p 'test_busine
 PYTHONPATH=src .venv/bin/python -B -m unittest discover -s tests -p 'test_workflow.py' -v
 ```
 
-测试覆盖 Tool 返回结构、金额保留、租户隔离、缺失参数、文件 / JSON 错误，以及真实 LangGraph 的成功与失败分支。下一课再加入支付和退款 Tool，练习多节点及按业务结果继续查询。
+测试覆盖 Tool 返回结构、金额保留、租户隔离、缺失参数、文件 / JSON 错误，以及真实 LangGraph 的成功与失败分支。第 61 课已经加入支付和退款 Tool，练习多节点及按业务结果继续查询，上一课测试继续保留。

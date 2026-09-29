@@ -47,7 +47,7 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 | raw | 模型原始回答 |
 | answer | 检查后的最终答案 |
 
-## 第 60 课：工作流调用订单 Tool
+## 第 61 课：多步订单工作流
 
 Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需命令行参数，Console 输入订单号。IDE 使用可输入的终端，不使用只读输出窗口。入口顶部的 `DATA_FILE` 指向 `data/business_demo.json`，`TENANT_ID` 默认 `acme`。
 
@@ -60,13 +60,18 @@ Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen
 | 文件 / 方法 | 观察内容 |
 |---|---|
 | `main_workflow.py` 的 `graph.invoke(initial_state)` | 原始订单号、入口租户、尚未填充的 Tool 结果 |
-| `workflows/business_tool.py` 的 `prepare_node()` | `question` 去空格、转大写后写入 `order_id` |
-| `workflows/business_tool.py` 的 `get_order_node()` | 将 `order_id`、`tenant_id`、数据文件传给 Tool |
+| `workflows/order_flow.py` 的 `prepare_node()` | 整理 `order_id`，初始化三个独立结果字段 |
+| `workflows/order_flow.py` 的 `get_order_node()` | 订单结果写入 `order_result`，不覆盖支付、退款字段 |
 | `business/tools.py` 的 `get_order()` | JSON 内容、同时匹配租户与订单号、统一返回字典 |
-| `workflows/business_tool.py` 的 `choose_result_route()` | Tool 结果已经合并到 State，根据 `success` 选择标签 |
-| `workflows/business_tool.py` 的 `answer_node()` / `error_answer_node()` | 最终 `branch` 和 `answer` |
+| `workflows/order_flow.py` 的 `choose_order_route()` | 订单失败或未支付直接总结，否则查询支付 |
+| `workflows/order_flow.py` 的 `get_payment_node()` / `choose_payment_route()` | 保存全部支付，至少一条支付成功才查退款 |
+| `business/tools.py` 的 `read_order_records()` | 根据可信租户和订单号收集所有支付或退款记录 |
+| `workflows/order_flow.py` 的 `get_refund_node()` | 保留退款结果，空列表表示查过但没有退款 |
+| `workflows/order_flow.py` 的 `summarize_node()` | 不再查 Tool，根据已有结果写入 `branch` 和 `answer` |
 
-成功案例输入 `A1002`；业务失败案例输入 `A9999`；空参数案例只按回车。文件失败案例可临时把 `DATA_FILE` 改为一个不存在的文件，再 Debug，观察 `error_answer_node()`，之后恢复配置。完整学习步骤见 [第 60 课说明](10-workflow-tools.md)。
+完整查询输入 `A1002`；未支付输入 `A1001`；无退款输入 `A1003`；无支付记录输入 `A1004`；支付未成功输入 `A1005`；订单不存在输入 `A9999`；空参数案例只按回车。观察提前结束时后续节点的断点不会命中，`executed_tools` 不包含被跳过的 Tool。`{}` 表示尚未查询；`{"success": true, "data": [], "error": null}` 表示已查过但无记录。
+
+文件失败案例可临时把 `DATA_FILE` 改为一个不存在的文件，再 Debug，观察订单失败后进入 `summarize_node()`，之后恢复配置。详细步骤见 [第 61 课说明](11-order-workflow.md)。上一课代码 `workflows/business_tool.py` 和 [第 60 课说明](10-workflow-tools.md) 保留对照。
 
 ## 配置和依赖
 
