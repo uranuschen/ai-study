@@ -2,7 +2,7 @@
 
 本课把阶段 3 的业务函数调用方式接到 LangGraph 中。先使用本地 JSON 的 `get_order`，观察参数和返回值怎样经过 State；Console 直接输入订单号，租户由入口提供。
 
-本文件保留第 60 课说明，`workflows/business_tool.py` 未改动。根目录 `main_workflow.py` 已切换到第 63 课恢复 Agent，当前运行和 Debug 步骤见 [第 63 课](13-agent-recovery.md)；下文记录的是第 60 课当时的入口和断点。
+本文件保留第 60 课说明，`workflows/business_tool.py` 未改动。根目录 `main_workflow.py` 已切换到第 64 课 RAG Tool，当前运行和 Debug 步骤见 [第 64 课](14-rag-agent-tool.md)；下文记录的是第 60 课当时的入口和断点。
 
 ```text
 START

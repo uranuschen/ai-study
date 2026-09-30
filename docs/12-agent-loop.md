@@ -1,6 +1,6 @@
 # 第 62 课：阶段 3 Tool Calling 迁移到 LangGraph Agent
 
-> 本文件与 `agent_loop.py` 保留第 62 课对照。当前根入口已切换到 [第 63 课：重试与执行预算](13-agent-recovery.md)，下文记录第 62 课当时的运行步骤；旧图测试仍可独立运行。
+> 本文件与 `agent_loop.py` 保留第 62 课对照。当前根入口已切换到 [第 64 课：RAG Tool](14-rag-agent-tool.md)，下文记录第 62 课当时的运行步骤；旧图测试仍可独立运行。
 
 本课把阶段 3 的模型调用循环拆成 LangGraph 节点。业务 Tool 仍然使用上一课的 `get_order`、`get_payment`、`get_refund`，模型负责选择工具名和订单号，程序负责执行并回传。新 Python 代码逐行添加中文注释。
 

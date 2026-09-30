@@ -13,7 +13,7 @@ from openai import APIStatusError
 # 导入真实响应类，测试消息与 usage 分离。
 from openai.types.chat import ChatCompletion
 # 导入真实 Console 接线，配置读取会被替换。
-import main_workflow
+import main_workflow_recovery as main_workflow
 # 导入纯内存配置，测试不读取 .env。
 from agent_learning.core.config import Settings
 # 导入只读业务函数，测试恢复后读取真实项目 JSON。

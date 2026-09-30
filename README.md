@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 63 课「重试、失败恢复与执行预算」，保留模型选工具的循环，增加临时故障有限重试、业务失败分支，以及模型 / Tool 次数、协作式时间和 Token / 估算费用控制。表结构继续以 sql/ 中现有文件为准。
+当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 64 课「把 RAG 封装为 Agent Tool」，本课只学模型选工具、调用现有 RAG 和保留引用，不增加 Token 统计、预算、超时和重试。表结构继续以 sql/ 中现有文件为准。
 
 ## 直接运行和 Debug
 
@@ -21,19 +21,19 @@
 
 真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
 
-## LangGraph Console：第 63 课重试与执行预算
+## LangGraph Console：第 64 课 RAG Tool
 
-运行 [main_workflow.py](main_workflow.py)，在 Console 输入自然语言问题，例如「查询 A1002 的退款记录」。入口调用 [recovery_agent.py](src/agent_learning/workflows/recovery_agent.py)，仍在 `model → tools → model` 之间循环；自然回答进入 `finish → END`，已知业务失败、系统错误、预算不足或超时进入 `failure → finish → END`。临时错误可以有限重试，SDK 自动重试关闭。
+运行 [main_workflow.py](main_workflow.py)，例如输入「A1002 的退款状态是什么，按规则通常多久能到账？」入口调用 [rag_agent.py](src/agent_learning/workflows/rag_agent.py)，图只有 `prepare`、`model`、`tools` 三个节点；模型请求工具就进入 tools，工具结果加入 messages 后再调用 model，模型回答后进入 END。
 
 ```bash
 .venv/bin/python main_workflow.py
 ```
 
-这一课运行入口会实际访问现有模型配置，默认 `USE_OLLAMA=False`；也可设置为 `True` 使用本机已安装且支持 Tool Calling 的模型。业务数据仍来自 [本地 JSON](data/business_demo.json)，三个 Tool 只做查询。租户由入口的 `TENANT_ID` 注入，模型只能提供订单号；工具说明和实际分发都不允许模型覆盖租户或文件路径。
+三个业务 Tool 仍只读 [本地 JSON](data/business_demo.json)。新增 `ask_knowledge_base` 包装原有 `RAGPipeline.ask()`，保留 `answer/citations/status`；按问题查规则，不强制每次查 RAG。订单事实以业务 Tool 的 `updated_at` 为准，不能由知识库旧快照覆盖。RAG 的租户、权限和资料类型由入口固定，默认只查 `policy`；模型只提供规则问题，不提供过滤条件。
 
-`MAX_STEPS=5` 计入失败、重试和最终回答，`MAX_TOOL_CALLS=6` 限制同批 Tool 与重试总尝试；`MAX_RETRIES=2` 表示每次决策 / 每条 Tool 最多额外重试两次。默认 `ENABLE_TIMEOUTS=False`，模型 SDK、Tool 和整体超时均关闭，便于断点学习；改为 `True` 才启用三项时间预算。入口还可直接修改输出 / 累计 Token 和估算费用预算。Console 展示计数、用量来源、估算费用、耗时、恢复事件与完整结果。费用单价是教学演示值，不代表 DeepSeek 当前报价；真实运行前需核对。
+用户运行入口时，外层 Agent 调用所配置模型；调用 RAG 会查询知识库，有有效证据时内部也会调用模型。默认 `USE_OLLAMA=False`，可改为 `True` 使用本机已有、支持 Tool Calling 的模型。入口设 `llm_timeout=None` 方便断点，`local_files_only=True` 不下载模型；资料不足保留原 RAG 的拒答结果。本次实现只验证离线测试，没有查询真实知识库或调用真实模型。
 
-Debug 解释器选择项目 `.venv/bin/python`，先在 `graph.invoke()` 打断点，再进入 `check_model_budget()`、`model_node()`、`charge_usage()`、`tools_node()`、`failure_node()` 和 `finish_node()`。默认关闭超时，断点暂停只影响耗时显示，不触发超时失败；次数、Token 和费用上限仍生效。详细顺序和离线重试入口见 [第 63 课说明](docs/13-agent-recovery.md)。启用时间限制后，本地同步 Tool 只在返回后检测超时，不保证强杀阻塞函数或远端任务；写操作幂等性是后续检查点。前几课的 [agent_loop.py](src/agent_learning/workflows/agent_loop.py) 和 [order_flow.py](src/agent_learning/workflows/order_flow.py) 保留对照；后续再接 RAG、Checkpoint 和 Memory。
+Debug 从 `graph.invoke()` 进入，重点看 `model_node()` → `dispatch_tool()` → `ask_knowledge_base()` → `RAGPipeline.ask()` → `tools_node()` 回传消息。Console 显示回答、结束原因和完整 Tool 结果；每次 RAG 调用的引用保留在自己的调用记录中，不跨调用合并编号。具体入口见 [第 64 课说明](docs/14-rag-agent-tool.md)。第 63 课入口保存在 [main_workflow_recovery.py](main_workflow_recovery.py)，旧图均保留；本课不接 Memory、Checkpoint 或 Tracing。
 
 ## 配置在哪里
 
@@ -48,7 +48,7 @@ Debug 解释器选择项目 `.venv/bin/python`，先在 `graph.invoke()` 打断�
 
 1. `main_ingest.py`：看文件路径和是否写库，然后进入 [IngestionPipeline.run()](src/agent_learning/rag/ingestion.py)。
 2. `main_ask.py`：看问题和筛选条件，然后进入 [RAGPipeline.ask()](src/agent_learning/rag/answering.py)。
-3. `main_workflow.py`：看模型配置与预算常量，再进入 [恢复 Agent](src/agent_learning/workflows/recovery_agent.py)、[模型适配](src/agent_learning/workflows/tool_model.py) 和 [业务 Tool](src/agent_learning/business/tools.py)，观察有限重试、用量、失败分支与退出；前几课文件保留对照。
+3. `main_workflow.py`：看可信租户与 RAG 过滤条件，再进入 [RAG Agent](src/agent_learning/workflows/rag_agent.py)，观察模型选工具、RAG 包装、结果回传与结束；前几课文件保留对照。
 4. [cli.py](src/agent_learning/cli.py)：只负责逐个创建 RAG 对象，不再解析命令。每个对象都有独立变量，便于断点查看。
 5. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
 
@@ -84,6 +84,6 @@ make test
 
 [学习路线](docs/00-roadmap.md) · [旧代码盘点](docs/01-inventory.md) · [流程说明](docs/02-architecture.md) · [实验记录](docs/03-experiments.md) · [数据库设计](docs/05-database.md) · [运行与断点](docs/06-running.md) · [后续工作流与 MCP 设计](docs/09-workflow-mcp-design.md)。
 
-BM25 用于小语料；父块保留但问答不自动展开；自动打标和 RAG 接入 Agent 留待后续。CLI 改为直接脚本后，租户和权限仍是学习时手动模拟的身份条件。合法引用不等于所有事实都正确，需要固定问题验收。
+BM25 用于小语料；父块保留但问答不自动展开；自动打标留待后续。CLI 改为直接脚本后，租户和权限仍是学习时手动模拟的身份条件。保留合法引用不等于外层 Agent 每句话都经过事实校验，需要固定问题验收。
 
 **协作规则：未经用户同意不操作数据库、不删除目录，不能执行任何 Git/SVN 操作。** old/ 备份和原课程资料保留不动，完整要求见 [AGENTS.md](AGENTS.md)。

@@ -9,7 +9,7 @@ from unittest.mock import Mock, patch
 # 导入 SDK 的真实响应类型，验证消息序列化。
 from openai.types.chat import ChatCompletion
 # 导入 Console 入口，测试实际组装流程。
-import main_workflow
+import main_workflow_recovery as main_workflow
 # 导入纯内存配置对象，不读取环境文件。
 from agent_learning.core.config import Settings
 # 导入本课图与工具说明。

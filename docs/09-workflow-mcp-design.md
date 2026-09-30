@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-> 状态：已实现 LangGraph 入门、第 60 课 JSON Tool、第 61 课多步业务工作流、第 62 课模型选工具的 Agent loop，以及第 63 课有限重试、失败分支和执行预算；PostgreSQL 业务 Tool、RAG Tool 和 MCP 尚未接入新工作流。本文件不是执行数据库建表、初始化或连接数据库的授权。
+> 状态：已实现 LangGraph 入门、第 60 课 JSON Tool、第 61 课多步业务工作流、第 62 课 Agent loop、第 63 课重试与预算，以及第 64 课 RAG Tool。第 64 课仅离线验证；PostgreSQL 业务 Tool 和 MCP 尚未接入。本文件不是执行数据库建表、初始化或连接数据库的授权。
 
 ## 已确认的边界
 
@@ -9,9 +9,11 @@
 - 工作流与 MCP 共用同一批只读业务 Tool；租户和可读权限来自可信入口，不能让模型根据问题自行提高权限。所有 SQL 使用固定查询与参数绑定，不开放任意 SQL Tool。
 - 现有知识库中的订单和退款资料是带 `snapshot_at` 的快照。回答当前状态时，以业务 Tool 返回的最新可用状态及其更新时间为准；RAG 用于制度、流程及注明时间的历史资料，避免旧快照覆盖较新的业务状态。
 
-当前 `RAGPipeline.ask()` 是固定的 RAG 问答链路：检索、精排、组装证据、调用 LLM、校验回答；它不会根据工具结果自主选择下一个 Tool 并循环。历史 `python_basic/toolcalling/` 的消息、工具声明、分发与结果回传方式，已在第 62 课迁移为 `workflows/agent_loop.py` 的 LangGraph 循环，入口为 `main_workflow.py`。模型选择三个只读 JSON Tool，可信租户由程序注入；最多调用模型 `MAX_STEPS` 次，达到上限保留已有结果并结束。当前消息只保留在单次执行内，跨次 Memory 与 Checkpoint 留待后续。
+当前 `RAGPipeline.ask()` 是固定的 RAG 问答链路：检索、精排、组装证据、调用 LLM、校验回答；它不会根据工具结果自主选择下一个 Tool 并循环。历史 `python_basic/toolcalling/` 的消息、工具声明、分发与结果回传方式，已在第 62 课迁移为 `workflows/agent_loop.py` 的 LangGraph 循环，旧图保留对照。当前消息只保留在单次执行内，跨次 Memory 与 Checkpoint 留待后续。
 
-当前根入口在第 63 课切换到 `workflows/recovery_agent.py`。临时系统异常有限重试且消耗总次数，已知业务失败进独立 failure 节点；控制模型 / Tool 次数、协作式时间、Token 和按配置单价的估算费用。客户端超时不等于远端取消，本地同步 Tool 仅返回后检测超时；远端任务终止和写操作幂等性仍是后续检查点。教学单价不是 DeepSeek 实时报价，本课不声称实现账号账单硬上限。
+第 63 课的 `workflows/recovery_agent.py` 和入口 `main_workflow_recovery.py` 保留。临时系统异常有限重试且消耗总次数，已知业务失败进独立 failure 节点；控制模型 / Tool 次数、协作式时间、Token 和按配置单价的估算费用。客户端超时不等于远端取消，本地同步 Tool 仅返回后检测超时；远端任务终止和写操作幂等性仍是后续检查点。教学单价不是 DeepSeek 实时报价，本课不声称实现账号账单硬上限。
+
+当前 `main_workflow.py` 使用第 64 课 `workflows/rag_agent.py` 的简版：只有 prepare、model、tools 三个节点，回答后进入 END，不加入预算、次数记录、重试或时间限制。`ask_knowledge_base` 包装现有 `RAGPipeline.ask()`，保留 `answer/citations/status`。RAG 只查可信入口指定的 policy/process/faq；模型仅提供规则问题，不修改租户、权限或资料类型。订单事实仍来自 JSON 业务 Tool 并保留 `updated_at`；引用按每次 Tool 调用单独保留，不跨调用合并编号。这里保留来源和提示事实边界，不宣称已严格校验外层回答的每个语义事实。
 
 RAG、Agent 工作流和 MCP 可以用于自然语言助手，也可以由 Issue、CI 日志、运维告警、库存预警等结构化事件触发；它们不要求用户先提出问题。RAG 提供相关资料作为证据，Agent 或工作流根据任务和 Tool 结果决定后续步骤，MCP 负责让外部 AI 客户端发现并调用 Tool。不是每个场景都需要同时使用三者；判断依据是是否存在非结构化资料、需要随结果变化的步骤，以及跨客户端复用 Tool 的需求。
 
@@ -62,10 +64,11 @@ RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六�
 以下是逐课新增的目标位置；Console、`workflows/`、JSON 订单样例和 `business/tools.py` 已创建，PostgreSQL 与 MCP 仍是后续计划，旧 RAG 入口不改动：
 
 ```text
-main_workflow.py                 # 第 63 课：有限重试、失败分支与执行预算
+main_workflow.py                 # 第 64 课：简版 Agent 接 RAG Tool
+main_workflow_recovery.py        # 第 63 课：保留重试、失败分支与执行预算
 main_mcp_server.py               # 本地 MCP Server 入口
 main_mcp_client.py               # 独立 MCP Client 演示入口
-src/agent_learning/workflows/   # 已有固定多步工作流与有模型调用上限的 Agent 循环
+src/agent_learning/workflows/   # 保留旧图；当前 rag_agent.py 只学核心循环与 RAG Tool
 src/agent_learning/business/    # 已实现三个 JSON 查询 Tool；PostgreSQL 留待后续
 src/agent_learning/mcp_app/     # MCP Server/Client 适配代码
 data/business_demo.json         # 已有订单、支付、退款模拟数据

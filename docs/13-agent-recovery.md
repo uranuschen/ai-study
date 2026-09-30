@@ -1,6 +1,6 @@
-# 第 63 课：重试、失败恢复与执行预算
+# 第 63 课：重试、失败恢复与执行预算（保留课程）
 
-本课沿用 DeepSeek 的兼容 Chat Completions 接口。入口仍是根目录 `main_workflow.py`，新图放在 `src/agent_learning/workflows/recovery_agent.py`。第 62 课 `agent_loop.py` 的图保留；模型适配新增 `request_with_tools()`，旧的 `chat_with_tools()` 仍返回原来的 assistant 字典。所有新逻辑语句都有上方中文注释。
+本课沿用 DeepSeek 的兼容 Chat Completions 接口。入口保留为根目录 `main_workflow_recovery.py`，图放在 `src/agent_learning/workflows/recovery_agent.py`；当前 `main_workflow.py` 已进入第 64 课简版 RAG Tool。第 62 课 `agent_loop.py` 的图保留；模型适配新增 `request_with_tools()`，旧的 `chat_with_tools()` 仍返回原来的 assistant 字典。所有新逻辑语句都有上方中文注释。
 
 运行入口才读取已有模型配置并调用模型。本课实现和测试没有读取 `.env` 密钥，没有真实 API 请求、数据库操作、模型下载或写业务操作。订单、支付、退款继续只读本地 JSON；金额字段仍为字符串，租户与路径只由可信入口注入。
 
@@ -30,7 +30,7 @@ SDK 使用 `max_retries=0`，重试都由工作流管理。等待采用有限的
 
 ## 预算放在哪里
 
-直接在 `main_workflow.py` 顶部修改，不使用 argparse 或反射配置。
+直接在 `main_workflow_recovery.py` 顶部修改，不使用 argparse 或反射配置。
 
 | 参数 | 默认值 | 意义 |
 |---|---|---|
@@ -65,7 +65,7 @@ SDK 使用 `max_retries=0`，重试都由工作流管理。等待采用有限的
 
 ## 超时边界与后续检查点
 
-`main_workflow.py` 默认 `ENABLE_TIMEOUTS=False`，传入图的 `limits["enable_timeouts"]` 也是 `False`：`prepare` 设置 `deadline=None`，跳过整体截止、单次模型耗时、单次 Tool 耗时和重试等待的截止检查。模型适配把 `timeout=None` 原样传给 SDK，明确关闭客户端 HTTP 超时，不回退到配置中的超时秒数。仍用 `time.monotonic()` 记录耗时，包含断点暂停，但这个记录不会影响路由。
+`main_workflow_recovery.py` 默认 `ENABLE_TIMEOUTS=False`，传入图的 `limits["enable_timeouts"]` 也是 `False`：`prepare` 设置 `deadline=None`，跳过整体截止、单次模型耗时、单次 Tool 耗时和重试等待的截止检查。模型适配把 `timeout=None` 原样传给 SDK，明确关闭客户端 HTTP 超时，不回退到配置中的超时秒数。仍用 `time.monotonic()` 记录耗时，包含断点暂停，但这个记录不会影响路由。
 
 需要学习超时分支时，将入口的 `ENABLE_TIMEOUTS=True`。此时使用单调时钟的截止时间，在每次模型、Tool 和重试前检查；操作返回后也检查，迟到模型响应不再执行其中 Tool。SDK 接收不超过剩余时间的 HTTP 超时，但该超时涉及连接 / 读取等阶段，并非远端任务取消凭证。直接调用 `build_graph()` 而不传开关时，图的默认配置仍开启时间限制；旧课 `chat_with_tools()` 仍使用原配置的模型超时。
 
@@ -82,10 +82,10 @@ SDK 使用 `max_retries=0`，重试都由工作流管理。等待采用有限的
 
 ## Run 与逐步 Debug
 
-打开根目录 `main_workflow.py`，解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，用可输入问题的 Console 点击 Run / Debug。无需参数。
+打开根目录 `main_workflow_recovery.py`，解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，用可输入问题的 Console 点击 Run / Debug。无需参数。
 
 ```bash
-.venv/bin/python -B main_workflow.py
+.venv/bin/python -B main_workflow_recovery.py
 ```
 
 `USE_OLLAMA=False` 沿用 `LLM_BASE_URL`、`LLM_MODEL` 与 `LLM_API_KEY` / `DEEPSEEK_API_KEY`；未覆盖时配置默认指向 DeepSeek。已有密钥无需复制到新代码。程序加载配置不会创建数据库连接。实际运行会调用模型并可能产生费用；本次只执行了离线测试。
@@ -94,7 +94,7 @@ SDK 使用 `max_retries=0`，重试都由工作流管理。等待采用有限的
 
 | 断点 | 看什么 |
 |---|---|
-| `main_workflow.py` 的 `result = graph.invoke(initial_state)` | 原始问题、可信租户和预算常量 |
+| `main_workflow_recovery.py` 的 `result = graph.invoke(initial_state)` | 原始问题、可信租户和预算常量 |
 | `recovery_agent.prepare_node()` | `limits["enable_timeouts"]=False`、`deadline=None`、初始计数与空历史 |
 | `check_model_budget()` | 下一次请求为何允许或被步骤 / Token / 费用截断 |
 | `model_node()` 的 `model.request_with_tools(...)` | 每次实际模型尝试、默认 `timeout=None`、输出上限 |

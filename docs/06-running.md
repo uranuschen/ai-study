@@ -47,19 +47,35 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 | raw | 模型原始回答 |
 | answer | 检查后的最终答案 |
 
-## 第 63 课：重试、失败恢复与预算
+## 第 64 课：把 RAG 封装为 Agent Tool
 
-Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需命令行参数。运行会实际访问所配置的模型；`USE_OLLAMA=False` 沿用已有 DeepSeek 兼容配置，改为 `True` 时使用本机已有、支持 Tool Calling 的模型。业务 Tool 仍只读 JSON。`MAX_STEPS` 包含失败、重试和最终回答，`MAX_TOOL_CALLS` 限制全部分发尝试，另有重试、时间、Token 和估算费用参数。单价为教学演示值，真实运行前需核对。
+当前入口为根目录 `main_workflow.py`，解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`。图只保留 `prepare → model → tools → model → END`；模型可以直接回答，也可以按需要调用业务 Tool 和 `ask_knowledge_base`。没有 Token 统计、预算、重试或时间限制。
 
 ```bash
 .venv/bin/python -B main_workflow.py
+```
+
+建议输入「A1002 的退款状态是什么，按规则通常多久能到账？」模型用业务 Tool 查状态，用 RAG 查规则，再组织答案；单纯查退款记录时不必调用 RAG。实际选工具顺序由模型返回的 `tool_calls` 决定。
+
+断点依次放在 `main_workflow.py` 的 `graph.invoke()`、`rag_agent.model_node()`、`dispatch_tool()`、`ask_knowledge_base()`、`RAGPipeline.ask()` 和 `tools_node()`。观察 RAG 返回的 `answer/citations/status` 如何进入 tool 消息，再成为下一轮模型的上下文。Console 保留每次调用的原始结果和引用。
+
+入口固定 `TENANT_ID="acme"`、`SECURITY_LEVEL=1`、`DOC_TYPE="policy"`；资料类型可改 `process/faq`，本课不查订单快照 `record`，也不设为 `None`。模型只能提供规则问题，不能修改过滤条件。设置 `llm_timeout=None` 方便 Debug，`local_files_only=True` 不下载模型。
+
+用户运行时会访问所配置的模型；调用 RAG 时还会查询现有知识库，有有效证据时才在 RAG 内部调用模型。资料或模型缺失需先准备，本次没有访问真实服务。完整课时说明与离线入口见 [第 64 课](14-rag-agent-tool.md)。
+
+## 第 63 课：重试、失败恢复与预算（保留入口）
+
+Debug 入口保留为根目录 `main_workflow_recovery.py`；解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需命令行参数。运行会实际访问所配置的模型；`USE_OLLAMA=False` 沿用已有 DeepSeek 兼容配置，改为 `True` 时使用本机已有、支持 Tool Calling 的模型。业务 Tool 仍只读 JSON。`MAX_STEPS` 包含失败、重试和最终回答，`MAX_TOOL_CALLS` 限制全部分发尝试，另有重试、时间、Token 和估算费用参数。单价为教学演示值，真实运行前需核对。
+
+```bash
+.venv/bin/python -B main_workflow_recovery.py
 ```
 
 建议按下面顺序打断点：
 
 | 文件 / 方法 | 观察内容 |
 |---|---|
-| `main_workflow.py` 的 `graph.invoke(initial_state)` | 原始问题、可信租户、最大模型调用次数 |
+| `main_workflow_recovery.py` 的 `graph.invoke(initial_state)` | 原始问题、可信租户、最大模型调用次数 |
 | `workflows/recovery_agent.py` 的 `prepare_node()` | 消息、可信预算、截止时间、初始计数 |
 | `check_model_budget()` / `charge_usage()` | 请求前预留、返回后实际或未知用量记账 |
 | `model_node()` | 有限重试、每次实际尝试、临时与永久错误 |
