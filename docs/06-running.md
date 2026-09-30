@@ -47,9 +47,9 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 | raw | 模型原始回答 |
 | answer | 检查后的最终答案 |
 
-## 第 61 课：多步订单工作流
+## 第 62 课：模型与 Tool 的受控循环
 
-Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需命令行参数，Console 输入订单号。IDE 使用可输入的终端，不使用只读输出窗口。入口顶部的 `DATA_FILE` 指向 `data/business_demo.json`，`TENANT_ID` 默认 `acme`。
+Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需命令行参数，Console 输入自然语言问题。入口顶部 `DATA_FILE` 指向 `data/business_demo.json`，`TENANT_ID` 默认 `acme`，`MAX_STEPS=5` 限制最多调用模型五次。运行会实际访问所配置的模型；`USE_OLLAMA=False` 沿用在线配置，改为 `True` 时使用本机已有、支持 Tool Calling 的模型。
 
 ```bash
 .venv/bin/python -B main_workflow.py
@@ -59,19 +59,19 @@ Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen
 
 | 文件 / 方法 | 观察内容 |
 |---|---|
-| `main_workflow.py` 的 `graph.invoke(initial_state)` | 原始订单号、入口租户、尚未填充的 Tool 结果 |
-| `workflows/order_flow.py` 的 `prepare_node()` | 整理 `order_id`，初始化三个独立结果字段 |
-| `workflows/order_flow.py` 的 `get_order_node()` | 订单结果写入 `order_result`，不覆盖支付、退款字段 |
-| `business/tools.py` 的 `get_order()` | JSON 内容、同时匹配租户与订单号、统一返回字典 |
-| `workflows/order_flow.py` 的 `choose_order_route()` | 订单失败或未支付直接总结，否则查询支付 |
-| `workflows/order_flow.py` 的 `get_payment_node()` / `choose_payment_route()` | 保存全部支付，至少一条支付成功才查退款 |
-| `business/tools.py` 的 `read_order_records()` | 根据可信租户和订单号收集所有支付或退款记录 |
-| `workflows/order_flow.py` 的 `get_refund_node()` | 保留退款结果，空列表表示查过但没有退款 |
-| `workflows/order_flow.py` 的 `summarize_node()` | 不再查 Tool，根据已有结果写入 `branch` 和 `answer` |
+| `main_workflow.py` 的 `graph.invoke(initial_state)` | 原始问题、可信租户、最大模型调用次数 |
+| `workflows/agent_loop.py` 的 `prepare_node()` | system/user 消息、空工具历史、计数零 |
+| `workflows/agent_loop.py` 的 `model_node()` | 完整消息发给模型，返回 assistant 消息和 tool_calls |
+| `workflows/tool_model.py` 的 `chat_with_tools()` | SDK 接收 messages、tools、tool_choice="auto" |
+| `workflows/agent_loop.py` 的 `choose_model_route()` | 有工具请求就去 tools，有回答或异常就去 finish |
+| `workflows/agent_loop.py` 的 `dispatch_tool()` | 校验参数，通过名称找到函数，程序注入可信租户和路径 |
+| `workflows/agent_loop.py` 的 `tools_node()` | 为每条调用追加匹配 ID 的 tool 消息，保留全部结果 |
+| `workflows/agent_loop.py` 的 `choose_tools_route()` | 次数未用尽就回 model，用尽就 finish |
+| `workflows/agent_loop.py` 的 `finish_node()` | 检查 stop_reason，保留已有证据并到 END |
 
-完整查询输入 `A1002`；未支付输入 `A1001`；无退款输入 `A1003`；无支付记录输入 `A1004`；支付未成功输入 `A1005`；订单不存在输入 `A9999`；空参数案例只按回车。观察提前结束时后续节点的断点不会命中，`executed_tools` 不包含被跳过的 Tool。`{}` 表示尚未查询；`{"success": true, "data": [], "error": null}` 表示已查过但无记录。
+先输入「查询 A1002 的退款记录」，观察模型是否直接选择 `get_refund`。再输入「完整检查 A1002 的订单、支付和退款」，观察模型逐轮选择或同轮请求多个 Tool。真实模型路径可能变化，判断依据是返回的 `tool_calls`，本课没有固定写死订单 → 支付 → 退款。
 
-文件失败案例可临时把 `DATA_FILE` 改为一个不存在的文件，再 Debug，观察订单失败后进入 `summarize_node()`，之后恢复配置。详细步骤见 [第 61 课说明](11-order-workflow.md)。上一课代码 `workflows/business_tool.py` 和 [第 60 课说明](10-workflow-tools.md) 保留对照。
+将 `MAX_STEPS` 暂改为 `1`，如果模型第一轮请求工具，执行并保存这一批结果后就会结束，不额外请求模型总结；模型第一轮直接回答则是正常完成。详细迁移说明见 [第 62 课](12-agent-loop.md)。离线 Debug 可以运行 `tests/test_agent_loop.py` 的完整循环测试，它使用预设消息替身和真实 JSON Tool，不访问 API。上一课 `workflows/order_flow.py` 和 [第 61 课说明](11-order-workflow.md) 保留对照。
 
 ## 配置和依赖
 

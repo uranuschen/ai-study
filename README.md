@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 61 课「多步订单工作流」，按订单、支付结果选择是否继续查询退款，最后保留已有业务结果并总结。表结构继续以 sql/ 中现有文件为准。
+当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 62 课「从阶段 3 Tool Calling 迁移到 LangGraph Agent」，由模型选择工具，程序分发执行并回传结果，通过明确的退出条件和模型调用上限控制循环。表结构继续以 sql/ 中现有文件为准。
 
 ## 直接运行和 Debug
 
@@ -21,17 +21,19 @@
 
 真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
 
-## LangGraph Console：第 61 课多步订单工作流
+## LangGraph Console：第 62 课受控 Agent 循环
 
-运行 [main_workflow.py](main_workflow.py)，在 Console 直接输入订单号并按回车；IDE Debug 时使用可输入的终端。入口调用 [order_flow.py](src/agent_learning/workflows/order_flow.py)：`START → prepare → get_order → get_payment → get_refund → summarize → END`，但订单不存在、未支付、支付缺失或未成功时，会提前转入总结。节点调用 [业务 Tool](src/agent_learning/business/tools.py)，将三个 `success/data/error` 结果分别写入 State，后面的节点不覆盖前面的结果。Tool 只读取 [本地模拟数据](data/business_demo.json)，不连接数据库或模型，不会扣款或发起退款。
+运行 [main_workflow.py](main_workflow.py)，在 Console 输入自然语言问题，例如「查询 A1002 的退款记录」。入口调用 [agent_loop.py](src/agent_learning/workflows/agent_loop.py)，在 `model → tools → model` 之间循环：模型返回 `tool_calls`，程序执行对应业务函数，并通过同一个 `tool_call_id` 回传 `role="tool"` 消息。模型不再请求工具且给出非空回答时，经过 `finish → END` 结束。
 
 ```bash
 .venv/bin/python main_workflow.py
 ```
 
-输入 `A1001` 只查订单；`A1002` 查询订单、全部支付和全部退款；`A1003` 查到支付成功但无退款记录；`A1004` 无支付记录；`A1005` 支付记录未成功；`A9999` 订单不存在。`  a1002  ` 会整理成 `A1002`。入口顶部的 `TENANT_ID` 默认是 `acme`，改为 `other` 后，同号订单、支付和退款都只返回该租户的数据。金额保留字符串表示，回答明确标注模拟数据和更新时间。
+这一课运行入口会实际访问现有模型配置，默认 `USE_OLLAMA=False`；也可设置为 `True` 使用本机已安装且支持 Tool Calling 的模型。业务数据仍来自 [本地 JSON](data/business_demo.json)，三个 Tool 只做查询。租户由入口的 `TENANT_ID` 注入，模型只能提供订单号；工具说明和实际分发都不允许模型覆盖租户或文件路径。
 
-Debug 解释器选择项目 `.venv/bin/python`，打开 `main_workflow.py` 点击 Debug，在 `graph.invoke()`、三个查询节点、`choose_order_route()`、`choose_payment_route()` 和 `summarize_node()` 打断点，观察三个结果字段和 `executed_tools`。完整步骤见 [第 61 课说明](docs/11-order-workflow.md)。[single_node.py](src/agent_learning/workflows/single_node.py)、[state_flow.py](src/agent_learning/workflows/state_flow.py)、[conditional_route.py](src/agent_learning/workflows/conditional_route.py) 和上一课 [business_tool.py](src/agent_learning/workflows/business_tool.py) 保留对照；受控 Agent loop、RAG 和 MCP 留待后续。
+`MAX_STEPS=5` 表示最多调用模型 5 次，最后生成回答也计一次；一轮可以包含多个 Tool 请求。达到上限后保留已有结果并明确结束，不额外调用模型总结。Console 显示 `model_steps`、`stop_reason`、`answer` 和完整 `tool_results`。
+
+Debug 解释器选择项目 `.venv/bin/python`，在 `graph.invoke()`、`model_node()`、`choose_model_route()`、`tools_node()`、`dispatch_tool()` 和 `choose_tools_route()` 打断点，观察消息如何回传、计数如何增长。完整迁移对照、离线测试入口和退出规则见 [第 62 课说明](docs/12-agent-loop.md)。前几课文件及上一课 [order_flow.py](src/agent_learning/workflows/order_flow.py) 保留对照；后续再加入重试、执行预算、RAG、Checkpoint 和 Memory。
 
 ## 配置在哪里
 
@@ -46,7 +48,7 @@ Debug 解释器选择项目 `.venv/bin/python`，打开 `main_workflow.py` 点�
 
 1. `main_ingest.py`：看文件路径和是否写库，然后进入 [IngestionPipeline.run()](src/agent_learning/rag/ingestion.py)。
 2. `main_ask.py`：看问题和筛选条件，然后进入 [RAGPipeline.ask()](src/agent_learning/rag/answering.py)。
-3. `main_workflow.py`：看初始 State，再进入 [多步订单节点](src/agent_learning/workflows/order_flow.py) 和 [三个业务 Tool](src/agent_learning/business/tools.py)，观察每一步如何保留结果、业务路由如何跳过查询并进入总结；前几课的文件保留对照。
+3. `main_workflow.py`：看模型配置和 `MAX_STEPS`，再进入 [Agent 循环](src/agent_learning/workflows/agent_loop.py)、[模型适配](src/agent_learning/workflows/tool_model.py) 和 [业务 Tool](src/agent_learning/business/tools.py)，观察模型请求、执行、回传与退出；前几课的文件保留对照。
 4. [cli.py](src/agent_learning/cli.py)：只负责逐个创建 RAG 对象，不再解析命令。每个对象都有独立变量，便于断点查看。
 5. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
 
@@ -82,6 +84,6 @@ make test
 
 [学习路线](docs/00-roadmap.md) · [旧代码盘点](docs/01-inventory.md) · [流程说明](docs/02-architecture.md) · [实验记录](docs/03-experiments.md) · [数据库设计](docs/05-database.md) · [运行与断点](docs/06-running.md) · [后续工作流与 MCP 设计](docs/09-workflow-mcp-design.md)。
 
-BM25 用于小语料；父块保留但问答不自动展开；自动打标和 Agent 留待后续。CLI 改为直接脚本后，租户和权限仍是学习时手动模拟的身份条件。合法引用不等于所有事实都正确，需要固定问题验收。
+BM25 用于小语料；父块保留但问答不自动展开；自动打标和 RAG 接入 Agent 留待后续。CLI 改为直接脚本后，租户和权限仍是学习时手动模拟的身份条件。合法引用不等于所有事实都正确，需要固定问题验收。
 
 **协作规则：未经用户同意不操作数据库、不删除目录，不能执行任何 Git/SVN 操作。** old/ 备份和原课程资料保留不动，完整要求见 [AGENTS.md](AGENTS.md)。
