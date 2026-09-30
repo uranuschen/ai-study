@@ -14,10 +14,11 @@
 | 56–60 Agent 与工作流入门 | 已完成概念、单节点、双节点 State 传值、普通回答 / 本地 Tool 条件路由，以及调用 JSON 订单 Tool 的成功 / 失败路由 |
 | 61 多步订单工作流 | 已实现订单、支付、退款、总结；按业务结果提前结束，保留全部已查询结果 |
 | 62 阶段 3 Tool Calling 迁移 | 已实现模型选择工具、分发执行、tool_call_id 结果回传、受控循环及最大模型调用次数 |
-| 63–70 Agent 与工作流进阶 | 执行预算与失败恢复、RAG Tool、Checkpoint、会话 Memory、人工确认、Tracing 和综合验收 |
+| 63 重试、恢复与执行预算 | 已实现有限重试、业务失败分支、模型 / Tool 次数、协作式超时和 Token / 估算费用控制；强取消与写幂等留作检查点 |
+| 64–70 Agent 与工作流进阶 | RAG Tool、Checkpoint、会话 Memory、人工确认、Tracing 和综合验收 |
 
 课程表自身将第 56–70 课标为 Agent 与工作流，第 101–120 课标为模型微调与评测，后续还有部署等内容。最初按用户要求只整理 RAG 入库和问答；随后按用户的新要求，逐课增加独立的 LangGraph Console，不根据课程标题自动扩大到其他功能。
 
-RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。第 60 课「接入阶段 3 Tools」保留普通 `get_order` 函数与成功 / 失败路由；第 61 课保留订单、支付、退款的固定业务路由。当前第 62 课将阶段 3 的 `messages/tools/tool_calls` 迁移为 LangGraph 受控循环，运行和 Debug 入口见 [第 62 课](12-agent-loop.md)。后续再练失败恢复和预算，并把 `RAGPipeline.ask()` 包装为 `ask_knowledge_base` Tool。
+RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。第 60–62 课的 JSON Tool、固定多步业务路由和 Agent 循环保留对照；当前第 63 课运行与 Debug 见 [重试和预算说明](13-agent-recovery.md)。费用控制是按入口演示单价的估算，同步超时不是远端强取消；下一课再把 `RAGPipeline.ask()` 包装为 `ask_knowledge_base` Tool。
 
 协作限制：未获同意不接触数据库，不删除目录，不执行 Git/SVN。

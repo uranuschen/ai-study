@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 62 课「从阶段 3 Tool Calling 迁移到 LangGraph Agent」，由模型选择工具，程序分发执行并回传结果，通过明确的退出条件和模型调用上限控制循环。表结构继续以 sql/ 中现有文件为准。
+当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 63 课「重试、失败恢复与执行预算」，保留模型选工具的循环，增加临时故障有限重试、业务失败分支，以及模型 / Tool 次数、协作式时间和 Token / 估算费用控制。表结构继续以 sql/ 中现有文件为准。
 
 ## 直接运行和 Debug
 
@@ -21,9 +21,9 @@
 
 真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
 
-## LangGraph Console：第 62 课受控 Agent 循环
+## LangGraph Console：第 63 课重试与执行预算
 
-运行 [main_workflow.py](main_workflow.py)，在 Console 输入自然语言问题，例如「查询 A1002 的退款记录」。入口调用 [agent_loop.py](src/agent_learning/workflows/agent_loop.py)，在 `model → tools → model` 之间循环：模型返回 `tool_calls`，程序执行对应业务函数，并通过同一个 `tool_call_id` 回传 `role="tool"` 消息。模型不再请求工具且给出非空回答时，经过 `finish → END` 结束。
+运行 [main_workflow.py](main_workflow.py)，在 Console 输入自然语言问题，例如「查询 A1002 的退款记录」。入口调用 [recovery_agent.py](src/agent_learning/workflows/recovery_agent.py)，仍在 `model → tools → model` 之间循环；自然回答进入 `finish → END`，已知业务失败、系统错误、预算不足或超时进入 `failure → finish → END`。临时错误可以有限重试，SDK 自动重试关闭。
 
 ```bash
 .venv/bin/python main_workflow.py
@@ -31,9 +31,9 @@
 
 这一课运行入口会实际访问现有模型配置，默认 `USE_OLLAMA=False`；也可设置为 `True` 使用本机已安装且支持 Tool Calling 的模型。业务数据仍来自 [本地 JSON](data/business_demo.json)，三个 Tool 只做查询。租户由入口的 `TENANT_ID` 注入，模型只能提供订单号；工具说明和实际分发都不允许模型覆盖租户或文件路径。
 
-`MAX_STEPS=5` 表示最多调用模型 5 次，最后生成回答也计一次；一轮可以包含多个 Tool 请求。达到上限后保留已有结果并明确结束，不额外调用模型总结。Console 显示 `model_steps`、`stop_reason`、`answer` 和完整 `tool_results`。
+`MAX_STEPS=5` 计入失败、重试和最终回答，`MAX_TOOL_CALLS=6` 限制同批 Tool 与重试总尝试；`MAX_RETRIES=2` 表示每次决策 / 每条 Tool 最多额外重试两次。默认 `ENABLE_TIMEOUTS=False`，模型 SDK、Tool 和整体超时均关闭，便于断点学习；改为 `True` 才启用三项时间预算。入口还可直接修改输出 / 累计 Token 和估算费用预算。Console 展示计数、用量来源、估算费用、耗时、恢复事件与完整结果。费用单价是教学演示值，不代表 DeepSeek 当前报价；真实运行前需核对。
 
-Debug 解释器选择项目 `.venv/bin/python`，在 `graph.invoke()`、`model_node()`、`choose_model_route()`、`tools_node()`、`dispatch_tool()` 和 `choose_tools_route()` 打断点，观察消息如何回传、计数如何增长。完整迁移对照、离线测试入口和退出规则见 [第 62 课说明](docs/12-agent-loop.md)。前几课文件及上一课 [order_flow.py](src/agent_learning/workflows/order_flow.py) 保留对照；后续再加入重试、执行预算、RAG、Checkpoint 和 Memory。
+Debug 解释器选择项目 `.venv/bin/python`，先在 `graph.invoke()` 打断点，再进入 `check_model_budget()`、`model_node()`、`charge_usage()`、`tools_node()`、`failure_node()` 和 `finish_node()`。默认关闭超时，断点暂停只影响耗时显示，不触发超时失败；次数、Token 和费用上限仍生效。详细顺序和离线重试入口见 [第 63 课说明](docs/13-agent-recovery.md)。启用时间限制后，本地同步 Tool 只在返回后检测超时，不保证强杀阻塞函数或远端任务；写操作幂等性是后续检查点。前几课的 [agent_loop.py](src/agent_learning/workflows/agent_loop.py) 和 [order_flow.py](src/agent_learning/workflows/order_flow.py) 保留对照；后续再接 RAG、Checkpoint 和 Memory。
 
 ## 配置在哪里
 
@@ -48,7 +48,7 @@ Debug 解释器选择项目 `.venv/bin/python`，在 `graph.invoke()`、`model_n
 
 1. `main_ingest.py`：看文件路径和是否写库，然后进入 [IngestionPipeline.run()](src/agent_learning/rag/ingestion.py)。
 2. `main_ask.py`：看问题和筛选条件，然后进入 [RAGPipeline.ask()](src/agent_learning/rag/answering.py)。
-3. `main_workflow.py`：看模型配置和 `MAX_STEPS`，再进入 [Agent 循环](src/agent_learning/workflows/agent_loop.py)、[模型适配](src/agent_learning/workflows/tool_model.py) 和 [业务 Tool](src/agent_learning/business/tools.py)，观察模型请求、执行、回传与退出；前几课的文件保留对照。
+3. `main_workflow.py`：看模型配置与预算常量，再进入 [恢复 Agent](src/agent_learning/workflows/recovery_agent.py)、[模型适配](src/agent_learning/workflows/tool_model.py) 和 [业务 Tool](src/agent_learning/business/tools.py)，观察有限重试、用量、失败分支与退出；前几课文件保留对照。
 4. [cli.py](src/agent_learning/cli.py)：只负责逐个创建 RAG 对象，不再解析命令。每个对象都有独立变量，便于断点查看。
 5. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
 

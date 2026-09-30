@@ -66,6 +66,13 @@ class ScriptedModel:
         # 交给真实 LangGraph 执行后续节点。
         return response
 
+    # 方法功能：兼容当前第 63 课 Console 的用量接口，仍不访问真实 API。
+    def request_with_tools(self, messages: list, tools: list, timeout=None, max_tokens: int = 1200) -> dict:
+        # 复用旧课的预设消息，保持旧图行为不变。
+        message = self.chat_with_tools(messages, tools)
+        # 返回明确的测试用量，不把 usage 混入 assistant 消息。
+        return {"message": message, "usage": {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}, "finish_reason": "tool_calls" if message.get("tool_calls") else "stop"}
+
 
 # 类职责：使用真实 LangGraph 和 JSON Tool 验证完整消息循环与退出边界。
 class AgentLoopTests(unittest.TestCase):

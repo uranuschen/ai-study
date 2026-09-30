@@ -47,9 +47,9 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 | raw | 模型原始回答 |
 | answer | 检查后的最终答案 |
 
-## 第 62 课：模型与 Tool 的受控循环
+## 第 63 课：重试、失败恢复与预算
 
-Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需命令行参数，Console 输入自然语言问题。入口顶部 `DATA_FILE` 指向 `data/business_demo.json`，`TENANT_ID` 默认 `acme`，`MAX_STEPS=5` 限制最多调用模型五次。运行会实际访问所配置的模型；`USE_OLLAMA=False` 沿用在线配置，改为 `True` 时使用本机已有、支持 Tool Calling 的模型。
+Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需命令行参数。运行会实际访问所配置的模型；`USE_OLLAMA=False` 沿用已有 DeepSeek 兼容配置，改为 `True` 时使用本机已有、支持 Tool Calling 的模型。业务 Tool 仍只读 JSON。`MAX_STEPS` 包含失败、重试和最终回答，`MAX_TOOL_CALLS` 限制全部分发尝试，另有重试、时间、Token 和估算费用参数。单价为教学演示值，真实运行前需核对。
 
 ```bash
 .venv/bin/python -B main_workflow.py
@@ -60,18 +60,18 @@ Debug 入口为根目录 `main_workflow.py`；解释器选择 `/Users/uranuschen
 | 文件 / 方法 | 观察内容 |
 |---|---|
 | `main_workflow.py` 的 `graph.invoke(initial_state)` | 原始问题、可信租户、最大模型调用次数 |
-| `workflows/agent_loop.py` 的 `prepare_node()` | system/user 消息、空工具历史、计数零 |
-| `workflows/agent_loop.py` 的 `model_node()` | 完整消息发给模型，返回 assistant 消息和 tool_calls |
-| `workflows/tool_model.py` 的 `chat_with_tools()` | SDK 接收 messages、tools、tool_choice="auto" |
-| `workflows/agent_loop.py` 的 `choose_model_route()` | 有工具请求就去 tools，有回答或异常就去 finish |
-| `workflows/agent_loop.py` 的 `dispatch_tool()` | 校验参数，通过名称找到函数，程序注入可信租户和路径 |
-| `workflows/agent_loop.py` 的 `tools_node()` | 为每条调用追加匹配 ID 的 tool 消息，保留全部结果 |
-| `workflows/agent_loop.py` 的 `choose_tools_route()` | 次数未用尽就回 model，用尽就 finish |
-| `workflows/agent_loop.py` 的 `finish_node()` | 检查 stop_reason，保留已有证据并到 END |
+| `workflows/recovery_agent.py` 的 `prepare_node()` | 消息、可信预算、截止时间、初始计数 |
+| `check_model_budget()` / `charge_usage()` | 请求前预留、返回后实际或未知用量记账 |
+| `model_node()` | 有限重试、每次实际尝试、临时与永久错误 |
+| `workflows/tool_model.py` 的 `request_with_tools()` | SDK 接收 timeout / max_tokens，返回消息与 usage |
+| `dispatch_tool()` / `tools_node()` | 静态白名单、可信租户、Tool 总次数与业务失败 |
+| `wait_to_retry()` | Retry-After、等待上限和剩余总时间 |
+| `failure_node()` | 不调用 LLM，明确说明失败原因 |
+| `finish_node()` | 为跳过请求配齐 ID，保留证据并记录总耗时 |
 
 先输入「查询 A1002 的退款记录」，观察模型是否直接选择 `get_refund`。再输入「完整检查 A1002 的订单、支付和退款」，观察模型逐轮选择或同轮请求多个 Tool。真实模型路径可能变化，判断依据是返回的 `tool_calls`，本课没有固定写死订单 → 支付 → 退款。
 
-将 `MAX_STEPS` 暂改为 `1`，如果模型第一轮请求工具，执行并保存这一批结果后就会结束，不额外请求模型总结；模型第一轮直接回答则是正常完成。详细迁移说明见 [第 62 课](12-agent-loop.md)。离线 Debug 可以运行 `tests/test_agent_loop.py` 的完整循环测试，它使用预设消息替身和真实 JSON Tool，不访问 API。上一课 `workflows/order_flow.py` 和 [第 61 课说明](11-order-workflow.md) 保留对照。
+将 `MAX_STEPS` 暂改为 `1`，如果第一轮请求工具，会在其他预算允许时保存这一批结果后结束；第一轮直接回答则正常完成。当前默认 `ENABLE_TIMEOUTS=False`：模型 SDK、Tool 与整体超时均关闭，`deadline=None`，断点暂停不会触发超时失败；耗时统计、次数、Token 与费用预算仍生效。需要演示超时分支时再改为 `True`。开启后的同步超时是返回后的检测与停止后续调度，不是远端强取消。完整说明与具体离线 Debug 方法见 [第 63 课](13-agent-recovery.md)。离线运行 `tests/test_recovery_agent.py` 可观察预设临时错误恢复与预算失败，旧图测试和第 60–62 课文件保留对照。
 
 ## 配置和依赖
 

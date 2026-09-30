@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-> 状态：已实现 LangGraph 单节点、双节点 State 传值、条件路由、第 60 课 JSON 订单 Tool、第 61 课多步业务工作流，以及第 62 课模型选工具、执行回传与最大模型调用次数控制的 Agent loop；PostgreSQL 业务 Tool、RAG Tool 和 MCP 尚未接入新工作流。本文件不是执行数据库建表、初始化或连接数据库的授权。
+> 状态：已实现 LangGraph 入门、第 60 课 JSON Tool、第 61 课多步业务工作流、第 62 课模型选工具的 Agent loop，以及第 63 课有限重试、失败分支和执行预算；PostgreSQL 业务 Tool、RAG Tool 和 MCP 尚未接入新工作流。本文件不是执行数据库建表、初始化或连接数据库的授权。
 
 ## 已确认的边界
 
@@ -10,6 +10,8 @@
 - 现有知识库中的订单和退款资料是带 `snapshot_at` 的快照。回答当前状态时，以业务 Tool 返回的最新可用状态及其更新时间为准；RAG 用于制度、流程及注明时间的历史资料，避免旧快照覆盖较新的业务状态。
 
 当前 `RAGPipeline.ask()` 是固定的 RAG 问答链路：检索、精排、组装证据、调用 LLM、校验回答；它不会根据工具结果自主选择下一个 Tool 并循环。历史 `python_basic/toolcalling/` 的消息、工具声明、分发与结果回传方式，已在第 62 课迁移为 `workflows/agent_loop.py` 的 LangGraph 循环，入口为 `main_workflow.py`。模型选择三个只读 JSON Tool，可信租户由程序注入；最多调用模型 `MAX_STEPS` 次，达到上限保留已有结果并结束。当前消息只保留在单次执行内，跨次 Memory 与 Checkpoint 留待后续。
+
+当前根入口在第 63 课切换到 `workflows/recovery_agent.py`。临时系统异常有限重试且消耗总次数，已知业务失败进独立 failure 节点；控制模型 / Tool 次数、协作式时间、Token 和按配置单价的估算费用。客户端超时不等于远端取消，本地同步 Tool 仅返回后检测超时；远端任务终止和写操作幂等性仍是后续检查点。教学单价不是 DeepSeek 实时报价，本课不声称实现账号账单硬上限。
 
 RAG、Agent 工作流和 MCP 可以用于自然语言助手，也可以由 Issue、CI 日志、运维告警、库存预警等结构化事件触发；它们不要求用户先提出问题。RAG 提供相关资料作为证据，Agent 或工作流根据任务和 Tool 结果决定后续步骤，MCP 负责让外部 AI 客户端发现并调用 Tool。不是每个场景都需要同时使用三者；判断依据是是否存在非结构化资料、需要随结果变化的步骤，以及跨客户端复用 Tool 的需求。
 
@@ -60,7 +62,7 @@ RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六�
 以下是逐课新增的目标位置；Console、`workflows/`、JSON 订单样例和 `business/tools.py` 已创建，PostgreSQL 与 MCP 仍是后续计划，旧 RAG 入口不改动：
 
 ```text
-main_workflow.py                 # 第 62 课：模型选工具、分发回传与受控循环
+main_workflow.py                 # 第 63 课：有限重试、失败分支与执行预算
 main_mcp_server.py               # 本地 MCP Server 入口
 main_mcp_client.py               # 独立 MCP Client 演示入口
 src/agent_learning/workflows/   # 已有固定多步工作流与有模型调用上限的 Agent 循环
