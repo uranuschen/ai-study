@@ -1,5 +1,7 @@
 # 第 64 课：把 RAG 封装为 Agent Tool
 
+本课入口保存在 `main_workflow_rag.py`；当前 `main_workflow.py` 已进入 [第 65 课 Checkpoint](15-checkpoint.md)。
+
 本课只学核心：把现有 `RAGPipeline.ask()` 包装成 `ask_knowledge_base`，让模型按需要查询规则，再保留来源并综合回答。不新增 Token 统计、次数预算、超时、重试、Memory、Checkpoint 或 Tracing；第 63 课完整入口保存在 `main_workflow_recovery.py`。
 
 ## 核心流程
@@ -18,17 +20,17 @@
 
 ## 运行和 Debug
 
-当前入口是根目录 `main_workflow.py`，图在 `src/agent_learning/workflows/rag_agent.py`。IDE 解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需参数。
+本课入口是根目录 `main_workflow_rag.py`，图在 `src/agent_learning/workflows/rag_agent.py`。IDE 解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，无需参数。
 
 ```bash
-.venv/bin/python -B main_workflow.py
+.venv/bin/python -B main_workflow_rag.py
 ```
 
 用户运行时才读取已有配置、调用模型；调用 RAG 时会查询现有知识库。USE_OLLAMA 可切换到本机已有且支持 Tool Calling 的模型。入口设置 `settings.llm_timeout=None` 便于断点，`settings.local_files_only=True` 不下载模型；缺少本地模型或知识库资料需先准备。本次只做离线验证，不默认访问真实数据库或模型。
 
 建议按以下顺序单步：
 
-1. `main_workflow.py`：创建原有 build_pipeline(settings) 和模型，再进入 graph.invoke()。
+1. `main_workflow_rag.py`：创建原有 build_pipeline(settings) 和模型，再进入 graph.invoke()。
 2. `rag_agent.prepare_node()`：查看初始 messages。
 3. `model_node()`：查看模型返回的工具名称、参数和调用 ID。
 4. `dispatch_tool()` → `ask_knowledge_base()` → `RAGPipeline.ask()`：查看规则问题、可信 filters、RAG 答案与引用。

@@ -113,7 +113,7 @@ def prepare_node(state: AgentState, filters: SearchFilter) -> dict:
         "messages": [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question}],
         # 初始没有待执行工具。
         "pending_tool_calls": [],
-        # 每次 invoke 使用独立的工具结果历史。
+        # 新一轮输入从空结果开始；Checkpoint 恢复不会重新执行 prepare。
         "tool_results": [],
         # 无效输入由条件边直接结束。
         "stop_reason": "invalid_input" if invalid else "",
@@ -124,15 +124,19 @@ def prepare_node(state: AgentState, filters: SearchFilter) -> dict:
 
 
 # 方法功能：模型读取消息和工具说明，选择工具或给出最终回答。
-def model_node(state: AgentState, model) -> dict:
-    # 请求失败或协议错误都直接结束，不自动重试。
+def model_node(state: AgentState, model, raise_errors: bool = False) -> dict:
+    # 第 64 课失败直接结束；第 65 课允许异常抛出，以便从 Checkpoint 恢复。
     try:
         # 在这里单步进入模型调用；本课不记录 usage。
         message = model.chat_with_tools(state["messages"], TOOL_SCHEMAS)
         # 复用上一课协议校验，不执行坏格式的工具请求。
         validate_model_message(message)
-    # 不向 Console 或 State 写入原始异常。
+    # 不向 Console 或 State 写入原始异常内容。
     except Exception as error:
+        # Checkpoint 课让失败节点保留为待执行，而不是返回结束状态。
+        if raise_errors:
+            # 原样抛出供 LangGraph 保存失败信息；入口只显示安全提示。
+            raise
         # 已取得的 Tool 结果仍保留在共享 State 中。
         return {"stop_reason": "model_error", "answer": "模型调用失败或响应格式无效，本次结束；已取得的 Tool 结果仍保留。", "pending_tool_calls": []}
     # 保存本轮 assistant 消息。

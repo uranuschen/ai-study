@@ -85,7 +85,7 @@ class BM25Retriever:
         if not query_words or not any(document_words):
             # 直接返回无匹配。
             return []
-        # 沿用旧代码中的库。
+        # 建 BM25 索引
         bm25 = BM25Okapi(document_words, k1=self.k1, b=self.b)
         # 一次计算所有候选的 BM25 分数。
         scores = bm25.get_scores(query_words)
@@ -93,7 +93,7 @@ class BM25Retriever:
         results = []
         # 同步遍历正文、分词和得分。
         for hit, words, score in zip(corpus, document_words, scores):
-            # 没有任何查询词匹配就跳过。 intersection是交集
+            # 没有任何查询词匹配就跳过。 intersection是交集。至少命中一个查询词才保留
             if not set(query_words).intersection(words):
                 # 不能把无关的零分文档加入结果。
                 continue
@@ -162,6 +162,11 @@ class ResultFusion:
             minimum = min(route_scores, default=0)
             # 最大原始分数。
             maximum = max(route_scores, default=0)
+
+            ####上面循环2路得到去重后的得分数据，然后向量化和bm25里的最大最小分数
+            ####下面把2路数据合并到一个id里，然后rrf打分 
+            ####RRF 的 rank 不是 merge 里重新算的，而是直接用两路传入时已有的排序
+
             # 逐个处理去重后的结果，rank 是排名，从 1 开始
             for rank, hit in enumerate(unique, 1):
                 # 如果这个 id 还不在 merged 中。
@@ -191,7 +196,7 @@ class ResultFusion:
                 # 线性融合使用旧代码中的 min-max 思路。
                 else:
                     # 只有一个结果或所有分数相等时，命中结果同分。
-                    normalized = 1.0
+                    normalized = 1.0 
                     # 有分差时再做除法。
                     if maximum > minimum:
                         # 缩放到 0..1，兼容负 BM25 分数。
@@ -230,18 +235,31 @@ class HybridRetriever:
     # 输入：改写后的问题和 SearchFilter；输出：候选 Hit 列表与召回数量统计。
     # 两路严格使用相同权限与元数据过滤。
     def retrieve(self, query: str, filters: SearchFilter) -> tuple[list[Hit], dict[str, int]]:
-        # 编码改写后的问题。  
-        # 1.可能加了前缀 2.把query向量化，这里是512维的 3.做了数值边界（无穷大小和非数字）和cos是0角度的验证
+        # 第一路 向量化
+        # 1，向量化开始
+        # 加了前缀 
+        # passages是通用向量化，这里是512维的 
+        # validate_vectors内部做了数值边界（无穷大小和非数字）和cos是0角度的验证
         vector = self.embedder.query(query)
-        # 向量 Top-K。
-        # 1.在校验了一次 2.把条件拼接在里面返回多个hits对象，就是cos后的数据，并且里面加了向量化近似检索来控制精度
+
+        # 2.HNSW近似检索，余弦打分。
+        # 2.1 这里扩大HNSW 意思是内部搜索时的候选池，这里是控制精度，默认是40，扩大到100是怕sql条件过滤的太多。
+        # 这里不是全量搜索，是向量的近似检索。
+        # 2.2 得到kb_chunks数据。算余弦距离，按余弦距离升序排序，取前 k 个。
         vector_hits = self.repository.vector_search(vector, filters, self.embedder.model_name, self.settings.recall_k)
-        # 去掉弱语义命中。 低于0.35的数据不要
+
+        # 3.去掉弱语义命中。 低于0.35的数据不要
         vector_hits = [hit for hit in vector_hits if hit.vector_score >= self.settings.min_vector_score]
-        # 读取完整过滤语料。
+
+        # 第二路 BM25对过滤后的查询词和文档词项打分。
+        # 1.读取完整过滤语料。
+        # 这里查询的时候进行了+1，用了哨兵模式。
+        # BM25 是在 Python 内存里算的，它需要完整语料来统计词频、文档频率、平均文档长度
+        # 如果少了数据，静默截断会导致BM25 的 IDF 统计不准确，召回结果不完整，召回率悄悄下降，很难排查。就直接报错。
         corpus = self.repository.lexical_corpus(filters, self.embedder.model_name, self.settings.bm25_max_chunks)
-        # 独立关键词召回。
+        # 2.jieba分词和bm25打分。对查询和分块分词后，然后建立bm25索引，然后打分。
         keyword_hits = self.bm25.search(query, corpus, self.settings.recall_k)
+        
         # 向量检索和 BM25 关键词检索的结果合在一起，按子块 id 去重，算一个rrf融合分，最后取前 k 个。 比较核心
         candidates = self.fusion.merge(vector_hits, keyword_hits, self.settings.candidate_k)
         # 返回阶段统计。

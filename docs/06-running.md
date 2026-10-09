@@ -47,21 +47,35 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 | raw | 模型原始回答 |
 | answer | 检查后的最终答案 |
 
-## 第 64 课：把 RAG 封装为 Agent Tool
+## 第 65 课：Checkpoint
 
-当前入口为根目录 `main_workflow.py`，解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`。图只保留 `prepare → model → tools → model → END`；模型可以直接回答，也可以按需要调用业务 Tool 和 `ask_knowledge_base`。没有 Token 统计、预算、重试或时间限制。
+当前入口为根目录 `main_workflow.py`，解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`。沿用第 64 课的业务和 RAG Tool，只增加 `InMemorySaver`、`thread_id` 和工具前暂停；不加入 Token 统计、预算、自动重试或时间限制。
 
 ```bash
 .venv/bin/python -B main_workflow.py
 ```
 
+建议输入「A1002 的退款状态是什么，按规则通常多久能到账？」在工具执行前，Console 显示存档中的待执行节点；回车令 next_input=None，再执行同一行 `graph.invoke(next_input, config=config)` 继续，输入 `q` 退出。默认 `THREAD_ID="lesson-65-order"` 是逻辑会话标识；恢复必须使用同一个 config 和 saver。
+
+断点放在入口的 `graph.invoke(next_input, config=config)`、`graph.get_state(config)`，以及 `checkpoint_agent.py` 的 `compile()`；首次 next_input=initial_state，恢复时 next_input=None。单步进入原 `rag_agent.py` 的 prepare/model/tools，观察 snapshot.values 中的 messages、pending_tool_calls 和 snapshot.next。存在有效存档且本次未抛异常时，next 为空才按图到达 END 处理；没有存档或异常后 next 为空时安全退出，不当成成功。
+
+模型异常会留下待执行的 model 节点；排查后回车手动继续，不是自动重试。恢复会重新执行失败节点，不保证其中已发出的模型请求或副作用只发生一次。已经处理成 Tool 失败并进入 END 的情况，没有待恢复节点。内存存档随退出或重启丢失；本课不连接 Checkpoint 数据库，也不实现多线程锁或多轮 Memory。完整说明与离线检查见 [第 65 课](15-checkpoint.md)。
+
+## 第 64 课：把 RAG 封装为 Agent Tool（保留入口）
+
+保留入口为根目录 `main_workflow_rag.py`，图只保留 `prepare → model → tools → model → END`；模型可以直接回答，也可以按需要调用业务 Tool 和 `ask_knowledge_base`。没有 Checkpoint、Token 统计、预算、重试或时间限制。
+
+```bash
+.venv/bin/python -B main_workflow_rag.py
+```
+
 建议输入「A1002 的退款状态是什么，按规则通常多久能到账？」模型用业务 Tool 查状态，用 RAG 查规则，再组织答案；单纯查退款记录时不必调用 RAG。实际选工具顺序由模型返回的 `tool_calls` 决定。
 
-断点依次放在 `main_workflow.py` 的 `graph.invoke()`、`rag_agent.model_node()`、`dispatch_tool()`、`ask_knowledge_base()`、`RAGPipeline.ask()` 和 `tools_node()`。观察 RAG 返回的 `answer/citations/status` 如何进入 tool 消息，再成为下一轮模型的上下文。Console 保留每次调用的原始结果和引用。
+断点依次放在 `main_workflow_rag.py` 的 `graph.invoke()`、`rag_agent.model_node()`、`dispatch_tool()`、`ask_knowledge_base()`、`RAGPipeline.ask()` 和 `tools_node()`。观察 RAG 返回的 `answer/citations/status` 如何进入 tool 消息，再成为下一轮模型的上下文。Console 保留每次调用的原始结果和引用。
 
 入口固定 `TENANT_ID="acme"`、`SECURITY_LEVEL=1`、`DOC_TYPE="policy"`；资料类型可改 `process/faq`，本课不查订单快照 `record`，也不设为 `None`。模型只能提供规则问题，不能修改过滤条件。设置 `llm_timeout=None` 方便 Debug，`local_files_only=True` 不下载模型。
 
-用户运行时会访问所配置的模型；调用 RAG 时还会查询现有知识库，有有效证据时才在 RAG 内部调用模型。资料或模型缺失需先准备，本次没有访问真实服务。完整课时说明与离线入口见 [第 64 课](14-rag-agent-tool.md)。
+第 64、65 课用户运行时会访问所配置的模型；调用 RAG 时还会查询现有知识库，有有效证据时才在 RAG 内部调用模型。资料或模型缺失需先准备，本次没有访问真实服务。RAG 包装说明与离线入口见 [第 64 课](14-rag-agent-tool.md)。
 
 ## 第 63 课：重试、失败恢复与预算（保留入口）
 

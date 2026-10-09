@@ -343,13 +343,18 @@ class RAGPipeline:
         # 保存运行配置。
         self.settings: Settings = settings
 
+    # RAG核心方法
     # 方法功能：串联完整问答链路，无有效证据时跳过 LLM，否则生成并校验回答。
     # 输入：用户问题与可信 SearchFilter；输出：包含 answer、citations、status、trace 的结果字典。
     # 权限过滤由调用者提供，不能从问题提升权限。
     def ask(self, question: str, filters: SearchFilter) -> dict:
-        # 改写问题并识别意图。
-        # 业务：提取关键字，比如单号，refund这些。
+        # 1.识别意图。
+        # 识别意图：refund、order、policy、general。
+        # 从问题里提取业务编号
+        # 清理首尾空白，校验问题长度，
         plan = self.query_processor.process(question)
+
+        # 2.保证权限不被问题改写覆盖
         # 复制用户原本的过滤条件。
         filter_values = filters.to_dict()
         # 只补充业务编号，不改变租户或权限。
@@ -357,13 +362,16 @@ class RAGPipeline:
         # 用普通字典创建本次检索条件。
         effective = SearchFilter(**filter_values)
 
-        # 混合召回、去重、融合、候选 Top-K。  核心方法
+        # 3 混合召回、去重、融合、候选 Top-K。  核心方法
         hits, trace = self.retriever.retrieve(plan["query"], effective)
 
-        # 原始问题精排打分，避免改写漂移。
+        # 4 原始问题精排打分，避免改写漂移。
+        # CrossEncoder 是一个把“查询 + 文档”拼在一起输入、直接输出相关性分数的精排模型
         ranked = self.reranker.rank(plan["original"], hits) if hits else []
+
         # 精排打分的阈值过滤。
         supported = [hit for hit in ranked if hit.rerank_score >= self.settings.min_rerank_score]
+        
         # 按原始问题抽取完整证据，并保持正文与引用位置一致。
         context, citations = self.context_builder.build(supported, plan["original"])
         # 记录学习调参需要的统计。

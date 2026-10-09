@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 64 课「把 RAG 封装为 Agent Tool」，本课只学模型选工具、调用现有 RAG 和保留引用，不增加 Token 统计、预算、超时和重试。表结构继续以 sql/ 中现有文件为准。
+当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 65 课「Checkpoint」。本课沿用简版 RAG Agent，只增加 State 保存、thread_id 和暂停恢复，不增加 Token 统计、预算、超时和自动重试。表结构继续以 sql/ 中现有文件为准。
 
 ## 直接运行和 Debug
 
@@ -21,19 +21,21 @@
 
 真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
 
-## LangGraph Console：第 64 课 RAG Tool
+## LangGraph Console：第 65 课 Checkpoint
 
-运行 [main_workflow.py](main_workflow.py)，例如输入「A1002 的退款状态是什么，按规则通常多久能到账？」入口调用 [rag_agent.py](src/agent_learning/workflows/rag_agent.py)，图只有 `prepare`、`model`、`tools` 三个节点；模型请求工具就进入 tools，工具结果加入 messages 后再调用 model，模型回答后进入 END。
+运行 [main_workflow.py](main_workflow.py)，例如输入「A1002 的退款状态是什么，按规则通常多久能到账？」入口调用 [checkpoint_agent.py](src/agent_learning/workflows/checkpoint_agent.py)，复用原 RAG Agent 的 `prepare`、`model`、`tools` 三个节点。模型请求工具后先暂停，回车继续执行工具；工具结果加入 messages 后再调用 model，模型回答后进入 END。
 
 ```bash
 .venv/bin/python main_workflow.py
 ```
 
-三个业务 Tool 仍只读 [本地 JSON](data/business_demo.json)。新增 `ask_knowledge_base` 包装原有 `RAGPipeline.ask()`，保留 `answer/citations/status`；按问题查规则，不强制每次查 RAG。订单事实以业务 Tool 的 `updated_at` 为准，不能由知识库旧快照覆盖。RAG 的租户、权限和资料类型由入口固定，默认只查 `policy`；模型只提供规则问题，不提供过滤条件。
+入口创建 `InMemorySaver`，通过 `configurable.thread_id` 选择逻辑会话。`get_state(config)` 查看已保存的 State 和待执行节点；首次和恢复共用 `graph.invoke(next_input, config=config)`，首次 next_input 是初始 dict，恢复时是 None。内存存档只在同一进程、同一个 saver 中保留，退出或重启会丢失。`thread_id` 不等于操作系统线程，也不代替权限校验或并发锁。
+
+三个业务 Tool 仍只读 [本地 JSON](data/business_demo.json)。`ask_knowledge_base` 继续包装原有 `RAGPipeline.ask()`，保留 `answer/citations/status`；按问题查规则，不强制每次查 RAG。订单事实以业务 Tool 的 `updated_at` 为准；RAG 的租户、权限和资料类型由入口固定，默认只查 `policy`。
 
 用户运行入口时，外层 Agent 调用所配置模型；调用 RAG 会查询知识库，有有效证据时内部也会调用模型。默认 `USE_OLLAMA=False`，可改为 `True` 使用本机已有、支持 Tool Calling 的模型。入口设 `llm_timeout=None` 方便断点，`local_files_only=True` 不下载模型；资料不足保留原 RAG 的拒答结果。本次实现只验证离线测试，没有查询真实知识库或调用真实模型。
 
-Debug 从 `graph.invoke()` 进入，重点看 `model_node()` → `dispatch_tool()` → `ask_knowledge_base()` → `RAGPipeline.ask()` → `tools_node()` 回传消息。Console 显示回答、结束原因和完整 Tool 结果；每次 RAG 调用的引用保留在自己的调用记录中，不跨调用合并编号。具体入口见 [第 64 课说明](docs/14-rag-agent-tool.md)。第 63 课入口保存在 [main_workflow_recovery.py](main_workflow_recovery.py)，旧图均保留；本课不接 Memory、Checkpoint 或 Tracing。
+Debug 重点看入口的 `graph.invoke(next_input, config=config)` 和 `get_state()`，再进入原 `rag_agent.py` 的节点。模型异常留下待执行节点，排查后可回车手动恢复；失败节点会从头执行，已发出的模型请求或副作用可能重复。没有存档或异常后没有待执行节点时安全退出，不当成成功。本课没有自动重试，已处理的 Tool 失败仍进入 END。具体流程见 [第 65 课说明](docs/15-checkpoint.md)。第 64 课入口保存在 [main_workflow_rag.py](main_workflow_rag.py)，第 63 课入口保存在 [main_workflow_recovery.py](main_workflow_recovery.py)；本课不接多轮 Memory、并发控制或 Tracing。
 
 ## 配置在哪里
 
@@ -48,7 +50,7 @@ Debug 从 `graph.invoke()` 进入，重点看 `model_node()` → `dispatch_tool(
 
 1. `main_ingest.py`：看文件路径和是否写库，然后进入 [IngestionPipeline.run()](src/agent_learning/rag/ingestion.py)。
 2. `main_ask.py`：看问题和筛选条件，然后进入 [RAGPipeline.ask()](src/agent_learning/rag/answering.py)。
-3. `main_workflow.py`：看可信租户与 RAG 过滤条件，再进入 [RAG Agent](src/agent_learning/workflows/rag_agent.py)，观察模型选工具、RAG 包装、结果回传与结束；前几课文件保留对照。
+3. `main_workflow.py`：看可信租户、RAG 过滤条件和 thread_id，再进入 [Checkpoint 图](src/agent_learning/workflows/checkpoint_agent.py)，观察存档、工具前暂停和恢复；节点逻辑复用 [RAG Agent](src/agent_learning/workflows/rag_agent.py)，前几课文件保留对照。
 4. [cli.py](src/agent_learning/cli.py)：只负责逐个创建 RAG 对象，不再解析命令。每个对象都有独立变量，便于断点查看。
 5. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
 

@@ -7,7 +7,7 @@ import unittest
 # 导入内存替身，隔离配置、模型、数据库和本地模型加载。
 from unittest.mock import Mock, patch
 # 导入本课 Console 入口，验证真实接线。
-import main_workflow
+import main_workflow_rag as main_workflow
 # 导入普通配置对象，测试不读取环境文件。
 from agent_learning.core.config import Settings
 # 导入可信过滤对象，验证规则资料和租户边界。

@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from langgraph.checkpoint.memory import InMemorySaver
 
 
 # 当前文件所在目录是项目根目录。
@@ -11,7 +12,7 @@ sys.path.insert(0, str(BASE_DIR / "src"))
 from agent_learning.cli import build_pipeline
 from agent_learning.core.config import load_settings
 from agent_learning.core.models import SearchFilter
-from agent_learning.workflows.rag_agent import build_graph
+from agent_learning.workflows.checkpoint_agent import build_graph
 from agent_learning.workflows.tool_model import CompatibleToolModel
 
 
@@ -23,14 +24,16 @@ TENANT_ID = "acme"
 SECURITY_LEVEL = 1
 # 本课先查制度；可改为 process 或 faq，不查询 record 订单快照。
 DOC_TYPE = "policy"
+# 这是逻辑会话编号，不是系统线程；不同编号保存各自的 State。
+THREAD_ID = "lesson-65-order"
 # False 使用已有在线配置；True 使用本机已有的 Ollama 模型。
 USE_OLLAMA = False
 # 程序不会下载这个模型，需要本机已经安装。
 OLLAMA_MODEL = "qwen3:8b"
 
 
-# 方法功能：只准备模型、RAG 和工具循环，不加入计数、预算或重试代码。
-# Debug 从 graph.invoke() 开始，再进入 model_node 和 tools_node。
+# 方法功能：给上一课的 Agent 加内存存档，暂停或失败后手动继续。
+# Debug 从 graph.invoke() 和 graph.get_state() 开始，查看 State 与待执行节点。
 def main():
     # 让模型按问题分别查询业务事实和知识库规则。
     question = input("请输入问题（例如：A1002 的退款状态是什么，按规定通常多久到账？）：")
@@ -54,8 +57,12 @@ def main():
     pipeline = build_pipeline(settings)
     # 查询身份、权限和资料类型来自入口，不接受模型提供的值。
     filters = SearchFilter(tenant_id=TENANT_ID, max_security_level=SECURITY_LEVEL, doc_type=DOC_TYPE)
-    # 绑定模型、已有 RAG、可信过滤条件和 JSON 文件。
-    graph = build_graph(model, pipeline, filters, data_file=DATA_FILE)
+    # Checkpoint 只保存在内存，不用数据库存档，退出程序后消失。
+    checkpointer = InMemorySaver()
+    # 绑定上一课的业务逻辑，并在每次执行 tools 之前暂停。
+    graph = build_graph(model, pipeline, filters, checkpointer, data_file=DATA_FILE)
+    # 每次执行和恢复都使用同一个会话编号。
+    config = {"configurable": {"thread_id": THREAD_ID}}
     # State 只保留本课核心字段。
     initial_state = {
         # 用户原始问题交给外层模型。
@@ -74,10 +81,54 @@ def main():
         "answer": "",
     # 结束初始 State。
     }
-    # 让 Console 显示将进入实际模型请求。
-    print(f"开始 Agent 查询，模型：{settings.llm_model}，知识库资料类型：{DOC_TYPE}。", flush=True)
-    # Debug 在这一行打断点，随后进入 prepare → model → tools。
-    result = graph.invoke(initial_state)
+    # 只有第一次传入初始数据；后续恢复传 None，不重置 State。
+    next_input = initial_state
+    # 让 Console 显示本次模型和逻辑会话。
+    print(f"开始 Agent 查询，模型：{settings.llm_model}，thread_id：{THREAD_ID}。内存存档仅本次进程有效。", flush=True)
+    # 每次暂停或失败后都等待用户决定，不自动重试。
+    while True:
+        # 区分正常结束和没有可恢复节点的异常。
+        failed = False
+        # 异常交给 LangGraph 记录待执行节点，入口不输出异常中的连接信息。
+        try:
+            # 首次执行 prepare → model；传 None 时从该会话的待执行节点继续。
+            graph.invoke(next_input, config=config)
+        # Debug 可查看 error；继续前先确认异常原因已处理。
+        except Exception as error:
+            # 异常不代表图已正常完成。
+            failed = True
+            # 恢复是重新执行失败节点，不是从出错的那一行继续。
+            print("节点执行失败，请先在 Debug 中检查异常原因；继续会重新执行失败节点，可能重复请求模型。")
+        # 读取已保存的 State 和下一节点；读取本身不执行图。
+        snapshot = graph.get_state(config)
+        # 没有存档，或者异常后没有待执行节点，都不能当成正常 END。
+        if not snapshot.values or (failed and not snapshot.next):
+            # 本课不自动重新传入初始数据，避免把失败变成整轮重跑。
+            print("没有可继续的 Checkpoint，请在 Debug 中检查；本次退出，不自动重新开始。")
+            # 不读取不存在的最终答案。
+            return
+        # 没有待执行节点就是 END，不是暂停。
+        if not snapshot.next:
+            # 最终答案与原始 Tool 结果都从已保存的 State 读取。
+            result = snapshot.values
+            # 结束入口的恢复循环。
+            break
+        # tools 表示 Tool 前暂停；model 通常表示模型异常后等待继续。
+        print("待执行节点：", snapshot.next)
+        # 查看模型已选的工具；暂停时它们还没有执行。
+        print("待执行 Tool：", json.dumps(snapshot.values["pending_tool_calls"], ensure_ascii=False, indent=2))
+        # 已完成的工具结果保存在 State 中，失败恢复不会重跑已成功的前序节点。
+        print("已保存 Tool 结果：", json.dumps(snapshot.values["tool_results"], ensure_ascii=False, indent=2))
+        # 回车只表示教学继续执行；这里不是敏感业务操作审批。
+        action = input("回车继续，输入 q 退出（退出后内存存档消失）：").strip().lower()
+        # 用户退出就停止本次演示。
+        if action == "q":
+            # 明确提示当前使用的不是磁盘存档。
+            print("已退出；本次内存 Checkpoint 不会在下次启动时恢复。")
+            # 不再执行任何待执行节点。
+            return
+        # 静态断点与失败恢复都传 None，不再次传 initial_state。
+        next_input = None
     # 展示外层模型的综合回答。
     print("输出：", result["answer"])
     # 仅显示结束原因，不加入日志和预算统计。
