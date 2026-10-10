@@ -8,11 +8,18 @@ class CompatibleToolModel:
     def __init__(self, settings):
         # 配置只保存在对象中，不放进 State 或打印出来。
         self.settings = settings
+        # 第 66 课只查看最近一次外层调用的 usage，不加入累计费用或日志系统。
+        self.last_usage = {}
 
+    #-- 复用的--
     # 方法功能：把完整消息历史和工具说明交给模型，由模型选择工具或回答。
     def chat_with_tools(self, messages: list, tools: list) -> dict:
+        # 先清空旧记录，异常或接口未提供用量时不能冒充上一轮的 Token 数。
+        self.last_usage = {}
         # 第 62 课显式保留原配置的超时和返回格式，只取 assistant 消息。
         response = self.request_with_tools(messages, tools, timeout=self.settings.llm_timeout)
+        # request_with_tools 已取得 usage；只保存供 Console 观察，不改变返回消息协议。
+        self.last_usage = response["usage"]
         # 空响应或生成被截断时，不能当成一次完整的模型决策。
         if response["finish_reason"] not in ("stop", "tool_calls"):
             # 模型节点会受控结束，已取得的业务结果仍保留。

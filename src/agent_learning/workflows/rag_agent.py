@@ -75,11 +75,13 @@ class AgentState(TypedDict):
     # 保存业务结果和 RAG 原始答案、来源。
     tool_results: list
     # final_answer、invalid_input、model_error、empty_response 或 tool_error。
+    # 第 66 课的包装节点另用 context_budget 表示当前轮超出上下文预算。
     stop_reason: str
     # 最终综合回答，或者查询失败说明。
     answer: str
 
 
+#-- 复用的--
 # 方法功能：把已有 RAG 问答流程包装成 Tool，保留答案、引用和状态。
 # 标明 pipeline 的类型，帮助编辑器跳转到 RAGPipeline.ask()。
 def ask_knowledge_base(question: str, pipeline: RAGPipeline, filters: SearchFilter) -> dict:
@@ -101,6 +103,7 @@ def ask_knowledge_base(question: str, pipeline: RAGPipeline, filters: SearchFilt
         return tool_result(False, error="知识库查询失败，请在 Debug 中检查异常原因。")
 
 
+#-- 复用的--
 # 方法功能：准备一轮对话，业务查询与 RAG 必须使用同一个可信租户。
 def prepare_node(state: AgentState, filters: SearchFilter) -> dict:
     # 没有问题时使用空字符串，由下面检查。
@@ -125,6 +128,7 @@ def prepare_node(state: AgentState, filters: SearchFilter) -> dict:
     }
 
 
+#-- 复用的--
 # 方法功能：模型读取消息和工具说明，选择工具或给出最终回答。
 def model_node(state: AgentState, model, raise_errors: bool = False) -> dict:
     # 第 64 课失败直接结束；第 65 课允许异常抛出，以便从 Checkpoint 恢复。
@@ -155,6 +159,7 @@ def model_node(state: AgentState, model, raise_errors: bool = False) -> dict:
     return {"messages": messages, "pending_tool_calls": [], "stop_reason": "final_answer" if answer else "empty_response", "answer": answer or "模型没有工具请求，也没有文字回答，本次结束。"}
 
 
+#-- 复用的--
 # 方法功能：只增加 RAG 分支，三个业务 Tool 仍复用原分发函数。
 def dispatch_tool(name: str, arguments: str, tenant_id: str, pipeline, filters: SearchFilter, data_file: Path = DEFAULT_DATA_FILE) -> dict:
     # 三个业务 Tool 交给已有白名单，不重新编写业务查询。
@@ -181,6 +186,7 @@ def dispatch_tool(name: str, arguments: str, tenant_id: str, pipeline, filters: 
     return ask_knowledge_base(parsed["question"], pipeline, filters)
 
 
+#-- 复用的--
 # 方法功能：执行本轮工具，并把完整结果按调用 ID 回传给模型。
 def tools_node(state: AgentState, pipeline, filters: SearchFilter, data_file: Path) -> dict:
     # 复制消息列表，不修改传入 State。
@@ -207,12 +213,14 @@ def tools_node(state: AgentState, pipeline, filters: SearchFilter, data_file: Pa
     return {"messages": messages, "tool_results": results, "pending_tool_calls": [], "stop_reason": "tool_error" if failed else "", "answer": "Tool 查询失败，本次结束；已保留查询结果和来源，不自动重试。" if failed else ""}
 
 
+#-- 复用的--
 # 方法功能：prepare 或 tools 有结束原因就退出，否则进入模型。
 def choose_continue_route(state: AgentState) -> str:
     # 条件边只返回路线名称，不执行模型。
     return "end" if state["stop_reason"] else "model"
 
 
+#-- 复用的--
 # 方法功能：模型自然回答就退出，有工具请求才执行 tools。
 def choose_model_route(state: AgentState) -> str:
     # 正常回答、模型错误和空响应都直接结束。

@@ -21,6 +21,6 @@
 
 课程表自身将第 56–70 课标为 Agent 与工作流，第 101–120 课标为模型微调与评测，后续还有部署等内容。最初按用户要求只整理 RAG 入库和问答；随后按用户的新要求，逐课增加独立的 LangGraph Console，不根据课程标题自动扩大到其他功能。
 
-RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。当前根入口进入 [第 65 课：Checkpoint](15-checkpoint.md)，沿用模型选工具、执行与结果回传，只增加内存存档和暂停恢复，不加入自动重试或多轮 Memory。第 60–64 课代码保留对照；第 64 课入口为 `main_workflow_rag.py`，说明见 [RAG Tool](14-rag-agent-tool.md)；第 63 课入口为 `main_workflow_recovery.py`，说明见 [重试和预算](13-agent-recovery.md)。
+RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。当前根入口进入 [第 66 课：会话 Memory](16-memory.md)，沿用模型与工具循环、内存 Checkpoint，只增加同会话追问、整轮历史裁剪和字符预算，不加入摘要或自动重试。第 60–65 课代码保留对照；第 65 课入口为 `main_workflow_checkpoint.py`，说明见 [Checkpoint](15-checkpoint.md)；第 64 课入口为 `main_workflow_rag.py`，说明见 [RAG Tool](14-rag-agent-tool.md)；第 63 课入口为 `main_workflow_recovery.py`，说明见 [重试和预算](13-agent-recovery.md)。
 
 协作限制：未获同意不接触数据库，不删除目录，不执行 Git/SVN。

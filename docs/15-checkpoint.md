@@ -2,6 +2,8 @@
 
 沿用第 64 课的订单 / RAG Agent，只增加图状态保存、会话标识和暂停恢复。没有新增业务流程、自动重试、Token / 预算控制、超时、多线程锁或多轮 Memory。
 
+本课入口保存在根目录 `main_workflow_checkpoint.py`；当前 `main_workflow.py` 已进入 [第 66 课会话 Memory](16-memory.md)。第 65 课的暂停与手动恢复逻辑保留不变。
+
 ## 核心流程
 
 `prepare → model → 暂停 → tools → model → … → END`
@@ -34,10 +36,10 @@ State 仍是原来的七个字段：question、tenant_id、messages、pending_to
 
 ## 运行与 Debug
 
-入口为根目录 `main_workflow.py`，第 64 课原入口保存在 `main_workflow_rag.py`。IDE 解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，不需要命令行参数。
+入口为根目录 `main_workflow_checkpoint.py`，第 64 课原入口保存在 `main_workflow_rag.py`。IDE 解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，不需要命令行参数。
 
 ```bash
-.venv/bin/python -B main_workflow.py
+.venv/bin/python -B main_workflow_checkpoint.py
 ```
 
 输入「A1002 的退款状态是什么，按规则通常多久能到账？」在工具前暂停时，观察 pending_tool_calls 尚未执行，回车后观察 tool_results 和 messages 增加。本课暂停仅用于教学，不是敏感操作的人工审批。

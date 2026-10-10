@@ -47,12 +47,22 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 | raw | 模型原始回答 |
 | answer | 检查后的最终答案 |
 
-## 第 65 课：Checkpoint
+## 第 66 课：会话 Memory（当前入口）
 
-当前入口为根目录 `main_workflow.py`，解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`。沿用第 64 课的业务和 RAG Tool，只增加 `InMemorySaver`、`thread_id` 和工具前暂停；不加入 Token 统计、预算、自动重试或时间限制。
+当前入口为根目录 `main_workflow.py`，复用原模型、业务 / RAG Tool 和内存 Checkpoint。先问「A1002 的退款状态是什么？」，再问「它退款处理中，是否代表已经到账？」同一 thread_id 保留消息；`/new` 切换新会话，q 退出，不手动暂停 tools。
 
 ```bash
 .venv/bin/python -B main_workflow.py
+```
+
+断点看 `graph.invoke()`、`memory_agent.prepare_memory_node()`、`trim_messages()` 和 `memory_model_node()`。顶部 `MAX_HISTORY_TURNS=2` 保留最多两个旧轮次，`MAX_CONTEXT_CHARS=12000` 控制消息与工具说明的 JSON 字符数，不是精确 Token 数；Console 观察最后一次外层输入 Token。裁剪按完整轮次进行，不拆开工具请求与结果。完整说明和离线命令见 [第 66 课](16-memory.md)。
+
+## 第 65 课：Checkpoint（保留入口）
+
+保留入口为根目录 `main_workflow_checkpoint.py`，解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`。沿用第 64 课的业务和 RAG Tool，只增加 `InMemorySaver`、`thread_id` 和工具前暂停；不加入 Token 统计、预算、自动重试或时间限制。
+
+```bash
+.venv/bin/python -B main_workflow_checkpoint.py
 ```
 
 建议输入「A1002 的退款状态是什么，按规则通常多久能到账？」在工具执行前，Console 显示存档中的待执行节点；回车令 next_input=None，再执行同一行 `graph.invoke(next_input, config=config)` 继续，输入 `q` 退出。默认 `THREAD_ID="lesson-65-order"` 是逻辑会话标识；恢复必须使用同一个 config 和 saver。
@@ -75,7 +85,7 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 
 入口固定 `TENANT_ID="acme"`、`SECURITY_LEVEL=1`、`DOC_TYPE="policy"`；资料类型可改 `process/faq`，本课不查订单快照 `record`，也不设为 `None`。模型只能提供规则问题，不能修改过滤条件。设置 `llm_timeout=None` 方便 Debug，`local_files_only=True` 不下载模型。
 
-第 64、65 课用户运行时会访问所配置的模型；调用 RAG 时还会查询现有知识库，有有效证据时才在 RAG 内部调用模型。资料或模型缺失需先准备，本次没有访问真实服务。RAG 包装说明与离线入口见 [第 64 课](14-rag-agent-tool.md)。
+第 64–66 课用户运行时会访问所配置的模型；调用 RAG 时还会查询现有知识库，有有效证据时才在 RAG 内部调用模型。资料或模型缺失需先准备，本次没有访问真实服务。RAG 包装说明与离线入口见 [第 64 课](14-rag-agent-tool.md)。
 
 ## 第 63 课：重试、失败恢复与预算（保留入口）
 
