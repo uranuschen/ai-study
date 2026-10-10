@@ -372,7 +372,7 @@ class RAGPipeline:
         # 精排打分的阈值过滤。
         supported = [hit for hit in ranked if hit.rerank_score >= self.settings.min_rerank_score]
         
-        # 按原始问题抽取完整证据，并保持正文与引用位置一致。
+        # 5.按原始问题抽取完整证据，并保持正文与引用位置一致。
         context, citations = self.context_builder.build(supported, plan["original"])
         # 记录学习调参需要的统计。
         trace.update({"query": plan, "filters": effective.to_dict(), "reranked": len(ranked), "context_chars": len(context), "evidence_count": len(citations)})

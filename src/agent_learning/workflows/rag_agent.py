@@ -4,6 +4,7 @@ from typing import TypedDict
 from langgraph.graph import END, START, StateGraph
 from agent_learning.business.tools import DEFAULT_DATA_FILE, tool_result
 from agent_learning.core.models import SearchFilter
+from agent_learning.rag.answering import RAGPipeline
 from agent_learning.workflows.agent_loop import TOOL_SCHEMAS as BUSINESS_TOOL_SCHEMAS, dispatch_tool as dispatch_business_tool, validate_model_message
 
 
@@ -80,7 +81,8 @@ class AgentState(TypedDict):
 
 
 # 方法功能：把已有 RAG 问答流程包装成 Tool，保留答案、引用和状态。
-def ask_knowledge_base(question: str, pipeline, filters: SearchFilter) -> dict:
+# 标明 pipeline 的类型，帮助编辑器跳转到 RAGPipeline.ask()。
+def ask_knowledge_base(question: str, pipeline: RAGPipeline, filters: SearchFilter) -> dict:
     # 空问题不进入检索。
     if not isinstance(question, str) or not question.strip():
         # 仍使用已有的统一 Tool 返回格式。
