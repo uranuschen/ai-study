@@ -130,11 +130,12 @@ def prepare_node(state: AgentState, filters: SearchFilter) -> dict:
 
 #-- 复用的--
 # 方法功能：模型读取消息和工具说明，选择工具或给出最终回答。
-def model_node(state: AgentState, model, raise_errors: bool = False) -> dict:
+#（67课调整）允许新课程传入扩展工具说明；旧入口省略参数时行为不变。
+def model_node(state: AgentState, model, raise_errors: bool = False, tool_schemas: list | None = None) -> dict:
     # 第 64 课失败直接结束；第 65 课允许异常抛出，以便从 Checkpoint 恢复。
     try:
-        # 在这里单步进入模型调用；本课不记录 usage。
-        message = model.chat_with_tools(state["messages"], TOOL_SCHEMAS)
+        #（67课调整）使用本次图的工具说明，未指定时沿用原来的四个工具。
+        message = model.chat_with_tools(state["messages"], TOOL_SCHEMAS if tool_schemas is None else tool_schemas)
         # 复用上一课协议校验，不执行坏格式的工具请求。
         validate_model_message(message)
     # 不向 Console 或 State 写入原始异常内容。

@@ -2,7 +2,7 @@
 
 沿用第 64 课的订单 / RAG Agent，只增加图状态保存、会话标识和暂停恢复。没有新增业务流程、自动重试、Token / 预算控制、超时、多线程锁或多轮 Memory。
 
-本课入口保存在根目录 `main_workflow_checkpoint.py`；当前 `main_workflow.py` 已进入 [第 66 课会话 Memory](16-memory.md)。第 65 课的暂停与手动恢复逻辑保留不变。
+本课入口保存在根目录 `main_workflow_checkpoint.py`；第 66 课入口保存在 `main_workflow_memory.py`，当前 `main_workflow.py` 已进入 [第 67 课人工确认](17-human-in-the-loop.md)。第 65 课的暂停与手动恢复逻辑保留不变。
 
 ## 核心流程
 

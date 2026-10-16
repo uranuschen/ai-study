@@ -3,7 +3,7 @@ from copy import deepcopy
 import unittest
 from unittest.mock import Mock, patch
 from langgraph.checkpoint.memory import InMemorySaver
-import main_workflow
+import main_workflow_memory as main_workflow
 from agent_learning.core.config import Settings
 from agent_learning.core.models import SearchFilter
 from agent_learning.workflows import memory_agent, rag_agent

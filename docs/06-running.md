@@ -47,12 +47,24 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 | raw | 模型原始回答 |
 | answer | 检查后的最终答案 |
 
-## 第 66 课：会话 Memory（当前入口）
+## 第 67 课：敏感操作人工确认（当前入口）
 
-当前入口为根目录 `main_workflow.py`，复用原模型、业务 / RAG Tool 和内存 Checkpoint。先问「A1002 的退款状态是什么？」，再问「它退款处理中，是否代表已经到账？」同一 thread_id 保留消息；`/new` 切换新会话，q 退出，不手动暂停 tools。
+当前入口为根目录 `main_workflow.py`，解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`。输入「取消 A1001 订单」，模型提出 `cancel_order` 后，审批前先检查订单、可信租户和待支付状态，随后通过动态 `interrupt()` 暂停；查询类 Tool 不暂停。
 
 ```bash
 .venv/bin/python -B main_workflow.py
+```
+
+查看待审批参数后输入 approve 确认或 reject 拒绝。入口只补充 decision，再用 `Command(resume=...)` 和同一个 config 恢复；不能修改目标订单 / 租户。确认只模拟取消，不改 JSON；拒绝结束当前轮。正常提问可 `/new` 换会话，审批中不能开始新问题，q 可退出并放弃当前进程的内存存档。
+
+断点放在入口的首次 `graph.invoke()`、审批恢复的 `graph.invoke(Command(...))`，以及 `human_approval_agent.approval_node()` 的 `interrupt()` 和恢复校验之后。恢复时审批节点会从头重跑，不从 Python 断点下一行直接续接；敏感模拟逻辑只能在校验确认之后执行。Memory 的裁剪和字符预算沿用第 66 课，不加入重试或真实写操作。审批参数、重复恢复边界和离线测试见 [第 67 课](17-human-in-the-loop.md)。
+
+## 第 66 课：会话 Memory（保留入口）
+
+保留入口为根目录 `main_workflow_memory.py`，复用原模型、业务 / RAG Tool 和内存 Checkpoint。先问「A1002 的退款状态是什么？」，再问「它退款处理中，是否代表已经到账？」同一 thread_id 保留消息；`/new` 切换新会话，q 退出，不手动暂停 tools。
+
+```bash
+.venv/bin/python -B main_workflow_memory.py
 ```
 
 断点看 `graph.invoke()`、`memory_agent.prepare_memory_node()`、`trim_messages()` 和 `memory_model_node()`。顶部 `MAX_HISTORY_TURNS=2` 保留最多两个旧轮次，`MAX_CONTEXT_CHARS=12000` 控制消息与工具说明的 JSON 字符数，不是精确 Token 数；Console 观察最后一次外层输入 Token。裁剪按完整轮次进行，不拆开工具请求与结果。完整说明和离线命令见 [第 66 课](16-memory.md)。
@@ -85,7 +97,7 @@ OLLAMA_MODEL = "qwen3:8b"  # 本机安装的 8B Q4 模型；可改为 "deepseek-
 
 入口固定 `TENANT_ID="acme"`、`SECURITY_LEVEL=1`、`DOC_TYPE="policy"`；资料类型可改 `process/faq`，本课不查订单快照 `record`，也不设为 `None`。模型只能提供规则问题，不能修改过滤条件。设置 `llm_timeout=None` 方便 Debug，`local_files_only=True` 不下载模型。
 
-第 64–66 课用户运行时会访问所配置的模型；调用 RAG 时还会查询现有知识库，有有效证据时才在 RAG 内部调用模型。资料或模型缺失需先准备，本次没有访问真实服务。RAG 包装说明与离线入口见 [第 64 课](14-rag-agent-tool.md)。
+第 64–67 课用户运行时会访问所配置的模型；调用 RAG 时还会查询现有知识库，有有效证据时才在 RAG 内部调用模型。资料或模型缺失需先准备，本次没有访问真实服务。RAG 包装说明与离线入口见 [第 64 课](14-rag-agent-tool.md)。
 
 ## 第 63 课：重试、失败恢复与预算（保留入口）
 

@@ -17,10 +17,12 @@
 | 63 重试、恢复与执行预算 | 已实现有限重试、业务失败分支、模型 / Tool 次数、协作式超时和 Token / 估算费用控制；强取消与写幂等留作检查点 |
 | 64 RAG 封装为 Agent Tool | 已接入 ask_knowledge_base，保留 RAG 答案、引用与状态；只学模型和工具循环，不加入预算或重试 |
 | 65 Checkpoint | 在简版 RAG Agent 中保存 State，以 thread_id 区分会话；工具前暂停、手动恢复及失败后继续；识别重复执行风险 |
-| 66–70 Agent 与工作流进阶 | 会话 Memory、人工确认、Tracing 和综合验收 |
+| 66 会话 Memory | 已实现同会话追问、整轮历史裁剪和字符上下文预算 |
+| 67 敏感操作人工确认 | 模拟取消订单前 interrupt，人工确认 / 拒绝后恢复，校验审批参数与重复恢复边界 |
+| 68–70 Agent 与工作流进阶 | Tracing 和综合验收 |
 
 课程表自身将第 56–70 课标为 Agent 与工作流，第 101–120 课标为模型微调与评测，后续还有部署等内容。最初按用户要求只整理 RAG 入库和问答；随后按用户的新要求，逐课增加独立的 LangGraph Console，不根据课程标题自动扩大到其他功能。
 
-RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。当前根入口进入 [第 66 课：会话 Memory](16-memory.md)，沿用模型与工具循环、内存 Checkpoint，只增加同会话追问、整轮历史裁剪和字符预算，不加入摘要或自动重试。第 60–65 课代码保留对照；第 65 课入口为 `main_workflow_checkpoint.py`，说明见 [Checkpoint](15-checkpoint.md)；第 64 课入口为 `main_workflow_rag.py`，说明见 [RAG Tool](14-rag-agent-tool.md)；第 63 课入口为 `main_workflow_recovery.py`，说明见 [重试和预算](13-agent-recovery.md)。
+RAG 的后续验收仍可用同一组问题观察两路召回，再调 Chunk / Overlap / Top-K、拒答阈值和 Prompt。当前根入口进入 [第 67 课：敏感操作人工确认](17-human-in-the-loop.md)，只增加模拟取消订单的审批、确认 / 拒绝与恢复，不写业务 JSON，不加入自动重试。第 60–66 课代码保留对照；第 66 课入口为 `main_workflow_memory.py`，说明见 [Memory](16-memory.md)；第 65 课入口为 `main_workflow_checkpoint.py`，说明见 [Checkpoint](15-checkpoint.md)；第 64 课入口为 `main_workflow_rag.py`，说明见 [RAG Tool](14-rag-agent-tool.md)；第 63 课入口为 `main_workflow_recovery.py`，说明见 [重试和预算](13-agent-recovery.md)。
 
 协作限制：未获同意不接触数据库，不删除目录，不执行 Git/SVN。

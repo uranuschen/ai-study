@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 66 课「会话 Memory」。本课复用 RAG Agent 和内存 Checkpoint，只增加多轮追问、整轮历史裁剪和字符上下文预算；不增加摘要、长期 Memory、自动重试或 Tracing。表结构继续以 sql/ 中现有文件为准。
+当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 67 课「敏感操作人工确认」。在会话 Memory 与内存 Checkpoint 上，只增加模拟取消订单、人工确认 / 拒绝与恢复；不真实取消订单、不修改业务 JSON，不增加重试或 Tracing。表结构继续以 sql/ 中现有文件为准。
 
 ## 直接运行和 Debug
 
@@ -21,25 +21,27 @@
 
 真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
 
-## LangGraph Console：第 66 课会话 Memory
+## LangGraph Console：第 67 课敏感操作人工确认
 
-运行 [main_workflow.py](main_workflow.py)，先问「A1002 的退款状态是什么？」，再追问「它退款处理中，是否代表已经到账？」入口调用 [memory_agent.py](src/agent_learning/workflows/memory_agent.py)：同会话保留消息，每轮追加新问题；模型和业务 / RAG Tool 继续沿用上一课逻辑。复用的方法上方标有 `#-- 复用的--`。
+运行 [main_workflow.py](main_workflow.py)，输入「取消 A1001 订单」。入口调用 [human_approval_agent.py](src/agent_learning/workflows/human_approval_agent.py)：模型提出 `cancel_order` 后，程序先校验可信租户、订单与待支付状态，再暂停给人工确认；没有人工确认不执行模拟取消。新增 / 调整逻辑注释标为 `（67课新加）` / `（67课调整）`。
 
 ```bash
 .venv/bin/python main_workflow.py
 ```
 
-入口只创建一次 graph 和 `InMemorySaver`，每次追问使用同一个 `configurable.thread_id`。新一轮只提交 question 和可信 tenant_id，不传空 messages 覆盖历史；prepare 从已有 State 读取消息并追加 user。输入 `/new` 切换新会话编号，不删除旧存档；输入 q 退出。内存只在当前进程、同一个 saver 中保留，重启会丢失；thread_id 不等于操作系统线程，也不代替权限校验或并发锁。
+审批节点通过 `interrupt(request)` 暂停；入口显示待审批参数，输入 approve 确认或 reject 拒绝，使用 `graph.invoke(Command(resume=...), config=config)` 恢复。恢复必须使用同一个 `thread_id` 与存档器，不是第 65 课的 `invoke(None, config)`。审批值只能补充决定，不能改订单号、租户、操作或工具调用 ID；拒绝或参数不匹配受控结束本轮。
 
-每次请求模型前，按 user 消息边界整轮裁掉最旧历史，避免拆开 assistant 工具请求和对应 tool 结果。入口的 `MAX_HISTORY_TURNS` 控制旧轮次，`MAX_CONTEXT_CHARS` 控制 messages 与 Tool schemas 的 JSON 字符数。字符数不是 Token 数，也不是模型最大上下文的精确测量；只用于本课简单预算。当前轮单独超预算时以 `context_budget` 结束，不继续调用模型、不截断 Tool 结果。Console 另显示最近一次外层请求的 prompt_tokens（接口提供时），不累计整轮费用，不统计内层 RAG 的 Token。
+确认后只生成 `simulated=True` 的模拟结果，不修改 [本地 JSON](data/business_demo.json)。同一会话已模拟取消的订单保存在 State 中，正常重复请求不再次模拟；已到 END 的重复恢复不重新执行。此边界不是生产写操作的 exactly-once 保证，退出重启或换 thread_id 会失去当前会话的模拟记录。
 
-三个业务 Tool 仍只读 [本地 JSON](data/business_demo.json)。`ask_knowledge_base` 继续包装原有 `RAGPipeline.ask()`，保留 `answer/citations/status`；按问题查规则，不强制每次查 RAG。订单事实以业务 Tool 的 `updated_at` 为准；RAG 的租户、权限和资料类型由入口固定，默认只查 `policy`。
+原来的查询订单、支付、退款与 RAG Tool 仍可用：只读查询照常执行，不要求人工确认；`ask_knowledge_base` 保留 RAG 的答案、引用与资料不足状态。订单事实仍以 JSON 的 `updated_at` 为准，模拟取消不能冒充真实业务状态。
 
-用户运行入口时，外层 Agent 调用所配置模型；调用 RAG 会查询知识库，有有效证据时内部也会调用模型。默认 `USE_OLLAMA=False`，可改为 `True` 使用本机已有、支持 Tool Calling 的模型。入口设 `llm_timeout=None` 方便断点，`local_files_only=True` 不下载模型；资料不足保留原 RAG 的拒答结果。本次实现只验证离线测试，没有查询真实知识库或调用真实模型。
+继续保留第 66 课的追问、整轮历史裁剪、字符预算和最近一次外层输入 Token 展示，不增加新预算逻辑。正常提问时 `/new` 切换新会话，q 退出；审批等待期间只能提交确认 / 拒绝或退出，不能开始新问题。内存只在当前进程、同一个 `InMemorySaver` 中保留；thread_id 不是操作系统线程，也不代替权限校验或并发锁。
 
-Debug 先看入口的 `graph.invoke()`，再进入 memory_agent 的 prepare、trim_messages 和 model 节点，对比裁剪前后 messages；模型和 Tool 核心逻辑仍单步进入 rag_agent。每轮清空待处理 Tool、当轮 tool_results、stop_reason 和 answer，不清空同会话 messages。Memory 是交给模型的会话内容，Checkpoint 是这些 State 的存档机制；裁剪当前上下文不等于删除已有 Checkpoint 历史。具体见 [第 66 课说明](docs/16-memory.md)。
+Debug 先看入口的 `graph.invoke()`，再看 `approval_node()` 中的 `interrupt()` 与恢复后的参数校验，最后观察 tool 结果如何加入 messages。动态 interrupt 恢复会从审批节点开头重跑，因此模拟执行必须放在 interrupt 返回并校验之后。具体见 [第 67 课说明](docs/17-human-in-the-loop.md)。
 
-第 65 课原入口保存在 [main_workflow_checkpoint.py](main_workflow_checkpoint.py)，保留 tools 前暂停与手动恢复，详见 [第 65 课说明](docs/15-checkpoint.md)。第 66 课不手动暂停，不加入自动重试；模型或 Tool 失败受控结束当前轮。第 64、63 课入口仍保留 [main_workflow_rag.py](main_workflow_rag.py)、[main_workflow_recovery.py](main_workflow_recovery.py)。
+用户运行入口时才调用所配置的外层模型；模型选择 RAG 时才查询知识库，有有效证据时内部也会调用模型。默认 `USE_OLLAMA=False`，可切换本机已有、支持 Tool Calling 的模型。入口保留 `llm_timeout=None` 便于断点，`local_files_only=True` 不下载模型。本课只做离线验证，没有查询真实知识库、调用真实模型或写业务数据。
+
+第 66 课保留在 [main_workflow_memory.py](main_workflow_memory.py)，只学追问与裁剪，不要求人工审批，详见 [Memory](docs/16-memory.md)。第 65 课保留在 [main_workflow_checkpoint.py](main_workflow_checkpoint.py)，用 tools 前静态暂停对照动态审批，详见 [Checkpoint](docs/15-checkpoint.md)。第 64、63 课入口仍保留 [main_workflow_rag.py](main_workflow_rag.py)、[main_workflow_recovery.py](main_workflow_recovery.py)。
 
 ## 配置在哪里
 
@@ -54,7 +56,7 @@ Debug 先看入口的 `graph.invoke()`，再进入 memory_agent 的 prepare、tr
 
 1. `main_ingest.py`：看文件路径和是否写库，然后进入 [IngestionPipeline.run()](src/agent_learning/rag/ingestion.py)。
 2. `main_ask.py`：看问题和筛选条件，然后进入 [RAGPipeline.ask()](src/agent_learning/rag/answering.py)。
-3. `main_workflow.py`：看可信租户、thread_id 和两个预算，再进入 [Memory 图](src/agent_learning/workflows/memory_agent.py)，观察追加追问和整轮裁剪；模型 / Tool 复用 [RAG Agent](src/agent_learning/workflows/rag_agent.py)。第 65 课的暂停恢复在 `main_workflow_checkpoint.py` 中对照。
+3. `main_workflow.py`：看可信租户、thread_id 和审批恢复，再进入 [人工审批图](src/agent_learning/workflows/human_approval_agent.py)。追问与裁剪在 `main_workflow_memory.py` 对照，静态暂停在 `main_workflow_checkpoint.py` 对照。
 4. [cli.py](src/agent_learning/cli.py)：只负责逐个创建 RAG 对象，不再解析命令。每个对象都有独立变量，便于断点查看。
 5. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
 

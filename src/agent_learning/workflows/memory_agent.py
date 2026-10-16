@@ -19,13 +19,15 @@ MEMORY_PROMPT = (
 
 
 # 方法功能：计算消息与工具说明的 JSON 字符数，作为本课的简单上下文预算。
-def context_size(messages: list) -> int:
-    # 包括工具请求参数、结果、额外消息字段和固定 Tool schemas；不是精确 Token 数。
-    return len(json.dumps({"messages": messages, "tools": TOOL_SCHEMAS}, ensure_ascii=False))
+#（67课调整）允许计入新增工具说明；旧课程仍使用原来的四个工具。
+def context_size(messages: list, tool_schemas: list | None = None) -> int:
+    #（67课调整）计算实际消息与本图工具说明的 JSON 字符数，不是精确 Token 数。
+    return len(json.dumps({"messages": messages, "tools": TOOL_SCHEMAS if tool_schemas is None else tool_schemas}, ensure_ascii=False))
 
 
 # 方法功能：按完整问答轮次裁剪历史，始终保留 system 和当前轮次。
-def trim_messages(messages: list, max_history_turns: int, max_context_chars: int) -> list:
+#（67课调整）新增可选工具说明参数，保证裁剪依据与本次模型请求一致。
+def trim_messages(messages: list, max_history_turns: int, max_context_chars: int, tool_schemas: list | None = None) -> list:
     # 空历史暂时没有可裁剪的内容。
     if not messages:
         # 返回新的空列表，不修改调用方的数据。
@@ -52,8 +54,8 @@ def trim_messages(messages: list, max_history_turns: int, max_context_chars: int
     turns = turns[-(max_history_turns + 1):]
     # 展开轮次列表，顺序与原消息一致。
     kept = [system] + [message for turn in turns for message in turn]
-    # 仍超预算时，从最旧的完整轮次开始删；当前轮不能拆开。
-    while len(turns) > 1 and context_size(kept) > max_context_chars:
+    #（67课调整）根据本图的工具说明检查预算，只删除最旧的完整轮次。
+    while len(turns) > 1 and context_size(kept, tool_schemas) > max_context_chars:
         # 整轮删除，因此 assistant 工具请求和 tool 结果会一起离开上下文。
         turns.pop(0)
         # 重新计算剩余消息，预算判断包含工具说明。
@@ -87,11 +89,12 @@ def prepare_memory_node(state: AgentState, filters: SearchFilter, max_history_tu
 
 #-- 复用的--
 # 方法功能：每次模型请求前检查上下文，再复用原 model 节点的 Tool Calling 与回答判断。
-def memory_model_node(state: AgentState, model: CompatibleToolModel, max_history_turns: int, max_context_chars: int) -> dict:
-    # 工具结果会增加消息长度，所以不是只在新问题开始时裁剪。
-    messages = trim_messages(state["messages"], max_history_turns, max_context_chars)
-    # 当前轮不能再拆开；即使删光旧轮仍超预算，就不发出模型请求。
-    if context_size(messages) > max_context_chars:
+#（67课调整）工具说明可由新课程传入；其余 Memory 与结束判断保持不变。
+def memory_model_node(state: AgentState, model: CompatibleToolModel, max_history_turns: int, max_context_chars: int, tool_schemas: list | None = None) -> dict:
+    #（67课调整）每次模型请求前，按实际工具说明裁剪历史。
+    messages = trim_messages(state["messages"], max_history_turns, max_context_chars, tool_schemas)
+    #（67课调整）当前轮连同本图工具说明仍超预算时，不发出模型请求。
+    if context_size(messages, tool_schemas) > max_context_chars:
         # 保留完整消息和已取得的 Tool 结果，避免发送残缺的工具协议。
         return {"messages": messages, "pending_tool_calls": [], "stop_reason": "context_budget", "answer": "当前轮问题或工具结果超过上下文字符预算，本轮结束；请缩短问题或调整 MAX_CONTEXT_CHARS。"}
     # 用普通字典副本将裁剪后的消息交给原模型节点。
@@ -100,8 +103,8 @@ def memory_model_node(state: AgentState, model: CompatibleToolModel, max_history
     current["messages"] = messages
     # 即使原节点返回 model_error，也要把本次裁剪写回 State。
     update = {"messages": messages}
-    # 沿用原受控失败、assistant 消息、pending_tool_calls 和 final_answer 处理。
-    update.update(model_node(current, model))
+    #（67课调整）将实际工具说明传给原模型节点，保留消息和最终回答的处理。
+    update.update(model_node(current, model, tool_schemas=tool_schemas))
     # LangGraph 将更新字典写回本会话 State。
     return update
 

@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-> 状态：已实现 LangGraph 入门、第 60 课 JSON Tool、第 61 课多步业务工作流、第 62 课 Agent loop、第 63 课重试与预算、第 64 课 RAG Tool、第 65 课内存 Checkpoint，以及第 66 课会话 Memory。第 64–66 课仅离线验证；PostgreSQL 业务 Tool 和 MCP 尚未接入。本文件不是执行数据库建表、初始化或连接数据库的授权。
+> 状态：已实现 LangGraph 入门、第 60 课 JSON Tool、第 61 课多步业务工作流、第 62 课 Agent loop、第 63 课重试与预算、第 64 课 RAG Tool、第 65 课内存 Checkpoint、第 66 课会话 Memory，以及第 67 课模拟取消订单的人工确认。第 64–67 课仅离线验证；PostgreSQL 业务 Tool 和 MCP 尚未接入。本文件不是执行数据库建表、初始化或连接数据库的授权。
 
 ## 已确认的边界
 
@@ -17,7 +17,9 @@
 
 第 65 课 `workflows/checkpoint_agent.py` 和入口 `main_workflow_checkpoint.py` 保留工具前静态暂停及手动恢复：首次传初始 dict，恢复传 None。模型异常留下的待执行节点可在排查后手动继续，没有自动重试；失败节点会重新执行，Checkpoint 不保证副作用只执行一次。
 
-当前 `main_workflow.py` 使用第 66 课 `workflows/memory_agent.py`：只创建一次图和 InMemorySaver，同一 thread_id 的新问题从 prepare 开始，保留旧消息并追加 user，每轮重置工具结果和结束原因。按完整轮次裁剪历史，字符预算包括 messages 与 Tool schemas；当前轮超预算时受控结束。`/new` 切换新编号，不删除旧存档。没有工具前静态暂停、摘要、自动重试或长期 Memory。InMemorySaver 不跨进程保留；裁剪当前消息不删除旧 Checkpoint 快照；thread_id 不代替权限校验或并发锁。具体学习步骤见 [第 66 课](16-memory.md)。
+第 66 课 `workflows/memory_agent.py` 和入口 `main_workflow_memory.py` 保留：只创建一次图和 InMemorySaver，同一 thread_id 的新问题从 prepare 开始，保留旧消息并追加 user，每轮重置工具结果和结束原因。按完整轮次裁剪历史，字符预算包括 messages 与 Tool schemas；当前轮超预算时受控结束。`/new` 切换新编号，不删除旧存档。没有工具前静态暂停、摘要、自动重试或长期 Memory。InMemorySaver 不跨进程保留；裁剪当前消息不删除旧 Checkpoint 快照；thread_id 不代替权限校验或并发锁。具体学习步骤见 [第 66 课](16-memory.md)。
+
+当前 `main_workflow.py` 使用第 67 课 `workflows/human_approval_agent.py`：保留查询 Tool 与 Memory，只新增 `cancel_order` 的模拟审批。审批节点 `interrupt(request)` 暂停，入口以同一 config 和 `Command(resume=...)` 确认 / 拒绝。程序绑定目标订单、可信租户与工具调用 ID；只有匹配的人工确认才能生成模拟结果，不修改 JSON 或数据库。动态 interrupt 恢复会从审批节点开头重跑；同会话保存已模拟订单，检查正常重复请求 / 已结束恢复不再次执行，但不承诺真实写操作 exactly-once。详见 [第 67 课](17-human-in-the-loop.md)。
 
 RAG、Agent 工作流和 MCP 可以用于自然语言助手，也可以由 Issue、CI 日志、运维告警、库存预警等结构化事件触发；它们不要求用户先提出问题。RAG 提供相关资料作为证据，Agent 或工作流根据任务和 Tool 结果决定后续步骤，MCP 负责让外部 AI 客户端发现并调用 Tool。不是每个场景都需要同时使用三者；判断依据是是否存在非结构化资料、需要随结果变化的步骤，以及跨客户端复用 Tool 的需求。
 
@@ -68,13 +70,14 @@ RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六�
 以下是逐课新增的目标位置；Console、`workflows/`、JSON 订单样例和 `business/tools.py` 已创建，PostgreSQL 与 MCP 仍是后续计划，旧 RAG 入口不改动：
 
 ```text
-main_workflow.py                 # 第 66 课：会话 Memory、追问与历史裁剪
+main_workflow.py                 # 第 67 课：模拟取消订单、人工确认与恢复
+main_workflow_memory.py          # 第 66 课：保留会话 Memory、追问与历史裁剪
 main_workflow_checkpoint.py      # 第 65 课：保留内存 Checkpoint 与暂停恢复
 main_workflow_rag.py             # 第 64 课：保留简版 Agent 与 RAG Tool
 main_workflow_recovery.py        # 第 63 课：保留重试、失败分支与执行预算
 main_mcp_server.py               # 本地 MCP Server 入口
 main_mcp_client.py               # 独立 MCP Client 演示入口
-src/agent_learning/workflows/   # 保留旧图；memory_agent.py 复用 RAG Agent 节点
+src/agent_learning/workflows/   # 保留旧图；新增 human_approval_agent.py
 src/agent_learning/business/    # 已实现三个 JSON 查询 Tool；PostgreSQL 留待后续
 src/agent_learning/mcp_app/     # MCP Server/Client 适配代码
 data/business_demo.json         # 已有订单、支付、退款模拟数据
@@ -97,6 +100,6 @@ MCP 是供 AI 客户端发现和调用能力的接口层，不替代 Spring Boot
 - 先用离线数据验证 JSON 读取、同租户隔离、多笔支付/退款、缺失记录、Tool 返回格式及工作流失败分支。
 - PostgreSQL 实现与 JSON 实现应跑同一组 Tool 行为用例；真实数据库集成验证只在用户明确授权后进行。
 - 将来业务 Tool 使用仅能读取 `biz` 所需表的账户。现有 `codex_ro` 只授权六张知识库表，不默认扩大到新业务表。
-- Memory、Checkpoint、MCP 不改变业务 Tool 的读写权限。若后续课程加入写操作，另设计人工确认和权限边界。
+- Memory、Checkpoint、MCP 不改变业务 Tool 的读写权限。第 67 课只做审批后的模拟取消；真实写操作仍需另行授权与业务系统校验。
 
 项目协作限制仍以根目录 `AGENTS.md` 为准；本文件只记录未来架构与实施顺序。
