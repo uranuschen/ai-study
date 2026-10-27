@@ -2,7 +2,7 @@
 
 在第 66 课上只增加模拟取消订单的审批流程。订单、支付、退款查询与 RAG 保持原逻辑；继续保留会话消息、整轮裁剪和字符预算，不增加真实写操作、自动重试、审批数据库或 Tracing。新加 / 调整代码的上方注释分别标为 `（67课新加）` / `（67课调整）`。
 
-入口：`main_workflow.py`。图：`src/agent_learning/workflows/human_approval_agent.py`。第 66 课原入口保存在 `main_workflow_memory.py`。
+本课入口保留在 `main_workflow_approval.py`，图：`src/agent_learning/workflows/human_approval_agent.py`。当前 `main_workflow.py` 已进入 [第 69 / 70 课 Tracing 与订单诊断](19-order-diagnosis.md)；本课简版逻辑保留不变，第 66 课入口仍在 `main_workflow_memory.py`。
 
 ## 主要流程
 
@@ -67,7 +67,7 @@ State 中的 `simulated_cancellations` 保存同会话已经模拟取消的订�
 ## 运行与 Debug
 
 ```bash
-.venv/bin/python -B main_workflow.py
+.venv/bin/python -B main_workflow_approval.py
 ```
 
 IDE 解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，不需要命令行参数。建议先输入 `取消 A1001 订单`：

@@ -121,6 +121,13 @@ class CompatibleChatModel:
     # 输入：role/content 消息列表；输出：模型原始字符串，后续交给 AnswerValidator 校验。
     # 统一超时、模型和温度。
     def chat(self, messages):
+        # (69) 原入口仍返回文字；详细响应交给新方法读取，保持旧调用方式。
+        response = self.request(messages, timeout=self.settings.llm_timeout, max_retries=1)
+        # (69) 不把 usage 混入 RAG 的原始回答字符串。
+        return response["content"]
+
+    # (69) 同时返回文字与 usage，供新课程统计 RAG 内部模型请求。
+    def request(self, messages: list, timeout=None, max_tokens: int = 1200, max_retries: int = 0) -> dict:
         from openai import OpenAI
         # 防止缺少凭证时发送请求。
         if not self.settings.llm_api_key:
@@ -130,9 +137,15 @@ class CompatibleChatModel:
         if self.settings.llm_base_url.startswith("http://127.0.0.1:11434/"):
             # 立即显示状态，避免终端长时间空白。
             print(f"正在等待本地模型 {self.settings.llm_model} 生成回答...", flush=True)
-        # 关闭客户端连接。
-        with OpenAI(api_key=self.settings.llm_api_key, base_url=self.settings.llm_base_url, timeout=self.settings.llm_timeout, max_retries=1) as client:
-            # 要求稳定的结构化回答。
-            result = client.chat.completions.create(model=self.settings.llm_model, messages=messages, temperature=0, max_tokens=1200)
-        # 空响应交给拒答校验。
-        return result.choices[0].message.content or ""
+        # (70) 综合入口传入零次 SDK 重试，所有实际尝试都由工作流计数和检查预算。
+        with OpenAI(api_key=self.settings.llm_api_key, base_url=self.settings.llm_base_url, timeout=timeout, max_retries=max_retries) as client:
+            # (70) 输出上限由本轮预算提供；旧入口仍沿用默认值。
+            result = client.chat.completions.create(model=self.settings.llm_model, messages=messages, temperature=0, max_tokens=max_tokens)
+        # (69) 用量缺失保留空字典，不伪造为零 Token。
+        usage = result.usage.model_dump(exclude_none=True) if result.usage is not None else {}
+        # (69) 空候选也保留已经产生的用量，交给调用方受控结束。
+        if not result.choices:
+            # (69) 不把空响应伪装成成功回答。
+            return {"content": "", "usage": usage, "finish_reason": "empty"}
+        # (69) 返回独立的文字、用量与结束原因，不修改原有引用校验。
+        return {"content": result.choices[0].message.content or "", "usage": usage, "finish_reason": result.choices[0].finish_reason}

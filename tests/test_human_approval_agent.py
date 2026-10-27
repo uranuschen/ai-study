@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import Mock, patch
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
-import main_workflow as lesson67
+import main_workflow_approval as lesson67
 from agent_learning.business.tools import DEFAULT_DATA_FILE, get_order
 from agent_learning.core.config import Settings
 from agent_learning.core.models import SearchFilter

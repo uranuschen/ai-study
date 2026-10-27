@@ -1,6 +1,6 @@
 # 第 63 课：重试、失败恢复与执行预算（保留课程）
 
-本课沿用 DeepSeek 的兼容 Chat Completions 接口。入口保留为根目录 `main_workflow_recovery.py`，图放在 `src/agent_learning/workflows/recovery_agent.py`；当前 `main_workflow.py` 已进入 [第 67 课人工确认](17-human-in-the-loop.md)。第 62 课 `agent_loop.py` 的图保留；模型适配新增 `request_with_tools()`，旧的 `chat_with_tools()` 仍返回原来的 assistant 字典。所有新逻辑语句都有上方中文注释。
+本课沿用 DeepSeek 的兼容 Chat Completions 接口。入口保留为根目录 `main_workflow_recovery.py`，图放在 `src/agent_learning/workflows/recovery_agent.py`；当前 `main_workflow.py` 已进入 [第 69 / 70 课 Tracing 与订单诊断](19-order-diagnosis.md)。第 62 课 `agent_loop.py` 的图保留；模型适配新增 `request_with_tools()`，旧的 `chat_with_tools()` 仍返回原来的 assistant 字典。所有新逻辑语句都有上方中文注释。
 
 运行入口才读取已有模型配置并调用模型。本课实现和测试没有读取 `.env` 密钥，没有真实 API 请求、数据库操作、模型下载或写业务操作。订单、支付、退款继续只读本地 JSON；金额字段仍为字符串，租户与路径只由可信入口注入。
 

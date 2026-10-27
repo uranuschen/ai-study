@@ -1,6 +1,6 @@
 # 第 64 课：把 RAG 封装为 Agent Tool
 
-本课入口保存在 `main_workflow_rag.py`；第 65 课入口保存在 `main_workflow_checkpoint.py`，第 66 课入口保存在 `main_workflow_memory.py`，当前 `main_workflow.py` 已进入 [第 67 课人工确认](17-human-in-the-loop.md)。
+本课入口保存在 `main_workflow_rag.py`；第 65 课入口保存在 `main_workflow_checkpoint.py`，第 66 课入口保存在 `main_workflow_memory.py`，第 67 课入口保存在 `main_workflow_approval.py`。当前 `main_workflow.py` 已进入 [第 69 / 70 课 Tracing 与订单诊断](19-order-diagnosis.md)。
 
 本课只学核心：把现有 `RAGPipeline.ask()` 包装成 `ask_knowledge_base`，让模型按需要查询规则，再保留来源并综合回答。不新增 Token 统计、次数预算、超时、重试、Memory、Checkpoint 或 Tracing；第 63 课完整入口保存在 `main_workflow_recovery.py`。
 

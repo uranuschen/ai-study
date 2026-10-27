@@ -1,5 +1,39 @@
+# 本地环境配置与备份；只有单独提供的空凭证模板允许公开。
 .env
-.env.db
+.env.*
+*.env
+*.env.*
+!/.env.public.example
+
+# PostgreSQL 密码文件与常见私钥文件，不应进入仓库。
+.pgpass
+.pgpass.*
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+
+# 历史备份中保留了旧的硬编码数据库配置，仅在本地保存。
+/old/
+
+# 下列历史脚本含直接写入的数据库账号、密码；不修改原文件。
+/python_basic/rag/db.py
+/python_basic/rag/document_ingest_pipeline.py
+/python_basic/rag/vector_search_test.py
+/python_basic/rag/test_pgvector.py
+/python_basic/rag/prefilter_test.py
+
+# 原配置说明包含本地数据库连接信息，仅在本地保存。
+/docs/08-db-config.md
+
+# Python 本地运行环境与缓存。
 .venv/
 __pycache__/
 *.pyc
+
+# 本机 IDE 配置可能含环境变量，默认不上传。
+.idea/
+.vscode/
+.DS_Store

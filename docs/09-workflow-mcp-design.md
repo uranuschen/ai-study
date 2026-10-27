@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-> 状态：已实现 LangGraph 入门、第 60 课 JSON Tool、第 61 课多步业务工作流、第 62 课 Agent loop、第 63 课重试与预算、第 64 课 RAG Tool、第 65 课内存 Checkpoint、第 66 课会话 Memory，以及第 67 课模拟取消订单的人工确认。第 64–67 课仅离线验证；PostgreSQL 业务 Tool 和 MCP 尚未接入。本文件不是执行数据库建表、初始化或连接数据库的授权。
+> 状态：已实现第 60–67 课的 JSON Tool、多步业务工作流、Agent loop、重试 / 预算、RAG Tool、内存 Checkpoint、会话 Memory 和模拟取消订单的人工确认；第 69 / 70 课补充 Tracing 并贯通诊断与验收。新增流程仅离线验证；PostgreSQL 业务 Tool 和 MCP 尚未接入。本文件不是执行数据库建表、初始化或连接数据库的授权。
 
 ## 已确认的边界
 
@@ -19,7 +19,11 @@
 
 第 66 课 `workflows/memory_agent.py` 和入口 `main_workflow_memory.py` 保留：只创建一次图和 InMemorySaver，同一 thread_id 的新问题从 prepare 开始，保留旧消息并追加 user，每轮重置工具结果和结束原因。按完整轮次裁剪历史，字符预算包括 messages 与 Tool schemas；当前轮超预算时受控结束。`/new` 切换新编号，不删除旧存档。没有工具前静态暂停、摘要、自动重试或长期 Memory。InMemorySaver 不跨进程保留；裁剪当前消息不删除旧 Checkpoint 快照；thread_id 不代替权限校验或并发锁。具体学习步骤见 [第 66 课](16-memory.md)。
 
-当前 `main_workflow.py` 使用第 67 课 `workflows/human_approval_agent.py`：保留查询 Tool 与 Memory，只新增 `cancel_order` 的模拟审批。审批节点 `interrupt(request)` 暂停，入口以同一 config 和 `Command(resume=...)` 确认 / 拒绝。程序绑定目标订单、可信租户与工具调用 ID；只有匹配的人工确认才能生成模拟结果，不修改 JSON 或数据库。动态 interrupt 恢复会从审批节点开头重跑；同会话保存已模拟订单，检查正常重复请求 / 已结束恢复不再次执行，但不承诺真实写操作 exactly-once。详见 [第 67 课](17-human-in-the-loop.md)。
+第 67 课入口保留为 `main_workflow_approval.py`，使用 `workflows/human_approval_agent.py`：保留查询 Tool 与 Memory，只新增 `cancel_order` 的模拟审批。审批节点 `interrupt(request)` 暂停，入口以同一 config 和 `Command(resume=...)` 确认 / 拒绝。程序绑定目标订单、可信租户与工具调用 ID；只有匹配的人工确认才能生成模拟结果，不修改 JSON 或数据库。动态 interrupt 恢复会从审批节点开头重跑；同会话保存已模拟订单，检查正常重复请求 / 已结束恢复不再次执行，但不承诺真实写操作 exactly-once。详见 [第 67 课](17-human-in-the-loop.md)。
+
+当前 `main_workflow.py` 使用第 70 课 `workflows/diagnosis_agent.py`，复用以上消息、业务规则、审批校验与重试 / 预算函数。每个新问题生成一个 `run_id` 并重置本轮预算，同一 `thread_id` 保留会话与模拟记录；审批恢复沿用当前编号与计数。单 Tool 执行后保存队列进度，审批与模拟执行分节点。外层 Agent 与 RAG 内层模型都通过统一的请求边界记账，缺失 usage 时按保守预留控制预算；默认关闭时间限制便于 Debug。
+
+第 69 课 `workflows/tracing.py` 只在 State / Console 保存脱敏事件，以 `thread_id`、`run_id` 和父子 span 关联节点、Tool、RAG 阶段和 LLM 尝试；不记录完整提示、结果、异常正文或凭证。Token / 费用只对实际模型尝试记一次，不把父子耗时相加。教学单价和未知用量预留不等于实际账单或账户硬限额。详见 [Tracing](18-tracing.md) 与 [订单诊断验收](19-order-diagnosis.md)。
 
 RAG、Agent 工作流和 MCP 可以用于自然语言助手，也可以由 Issue、CI 日志、运维告警、库存预警等结构化事件触发；它们不要求用户先提出问题。RAG 提供相关资料作为证据，Agent 或工作流根据任务和 Tool 结果决定后续步骤，MCP 负责让外部 AI 客户端发现并调用 Tool。不是每个场景都需要同时使用三者；判断依据是是否存在非结构化资料、需要随结果变化的步骤，以及跨客户端复用 Tool 的需求。
 
@@ -70,14 +74,15 @@ RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六�
 以下是逐课新增的目标位置；Console、`workflows/`、JSON 订单样例和 `business/tools.py` 已创建，PostgreSQL 与 MCP 仍是后续计划，旧 RAG 入口不改动：
 
 ```text
-main_workflow.py                 # 第 67 课：模拟取消订单、人工确认与恢复
+main_workflow.py                 # 第 69 / 70 课：Tracing、诊断综合与执行预算
+main_workflow_approval.py        # 第 67 课：保留模拟取消订单、人工确认与恢复
 main_workflow_memory.py          # 第 66 课：保留会话 Memory、追问与历史裁剪
 main_workflow_checkpoint.py      # 第 65 课：保留内存 Checkpoint 与暂停恢复
 main_workflow_rag.py             # 第 64 课：保留简版 Agent 与 RAG Tool
 main_workflow_recovery.py        # 第 63 课：保留重试、失败分支与执行预算
 main_mcp_server.py               # 本地 MCP Server 入口
 main_mcp_client.py               # 独立 MCP Client 演示入口
-src/agent_learning/workflows/   # 保留旧图；新增 human_approval_agent.py
+src/agent_learning/workflows/   # 保留旧图；新增 diagnosis_agent.py / tracing.py
 src/agent_learning/business/    # 已实现三个 JSON 查询 Tool；PostgreSQL 留待后续
 src/agent_learning/mcp_app/     # MCP Server/Client 适配代码
 data/business_demo.json         # 已有订单、支付、退款模拟数据

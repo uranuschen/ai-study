@@ -53,7 +53,7 @@ Memory 是交给模型理解追问的会话内容；Checkpoint 是保存图 Stat
 
 ## 运行与 Debug
 
-第 66 课入口保留为根目录 `main_workflow_memory.py`，图在 `src/agent_learning/workflows/memory_agent.py`。当前 `main_workflow.py` 已进入 [第 67 课人工确认](17-human-in-the-loop.md)，这里仍保留不要求审批的 Memory 例子。IDE 解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，不需要参数。
+第 66 课入口保留为根目录 `main_workflow_memory.py`，图在 `src/agent_learning/workflows/memory_agent.py`。当前 `main_workflow.py` 已进入 [第 69 / 70 课 Tracing 与订单诊断](19-order-diagnosis.md)，第 67 课另存为 `main_workflow_approval.py`；这里仍保留不要求审批的 Memory 例子。IDE 解释器选择 `/Users/uranuschen/ai-study/.venv/bin/python`，不需要参数。
 
 ```bash
 .venv/bin/python -B main_workflow_memory.py

@@ -1,6 +1,6 @@
 # AI 学习项目：企业 RAG
 
-当前 RAG 阶段学到第 54 课「优化 Chunk / Top-K / Prompt；资料不足明确回答不知道」。RAG 代码按 old/ 的普通类、函数、字典和现有库调用整理，保留资料入库、用户问答两条主流程；独立的 LangGraph Console 已进入第 67 课「敏感操作人工确认」。在会话 Memory 与内存 Checkpoint 上，只增加模拟取消订单、人工确认 / 拒绝与恢复；不真实取消订单、不修改业务 JSON，不增加重试或 Tracing。表结构继续以 sql/ 中现有文件为准。
+当前 RAG 阶段保留第 54 课的问答链路；LangGraph Console 已进入第 69 / 70 课「Tracing 与订单问题诊断综合」。复用业务 Tool、RAG、会话 Memory、Checkpoint、人工确认与有限重试，把次数、Token 和估算费用限制贯通；只增加必要的追踪与汇总，不接外部日志平台。订单数据仍为只读 JSON，取消仅模拟；表结构不变。
 
 ## 直接运行和 Debug
 
@@ -21,42 +21,50 @@
 
 真正入库：用户先手动执行 SQL 建表和初始化，再确认 `main_ingest.py` 的 `WRITE_TO_DB=True` 后运行。当前文件已经设为 `True`；只想预览时先改回 `False`。程序不会自动建表、删表。旧的 `ingest / ask / --write` 子命令已退出使用，不需要再学习 argparse。
 
-## LangGraph Console：第 67 课敏感操作人工确认
+## LangGraph Console：第 69 / 70 课 Tracing 与订单诊断
 
-运行 [main_workflow.py](main_workflow.py)，输入「取消 A1001 订单」。入口调用 [human_approval_agent.py](src/agent_learning/workflows/human_approval_agent.py)：模型提出 `cancel_order` 后，程序先校验可信租户、订单与待支付状态，再暂停给人工确认；没有人工确认不执行模拟取消。新增 / 调整逻辑注释标为 `（67课新加）` / `（67课调整）`。
+运行 [main_workflow.py](main_workflow.py)。入口调用 [diagnosis_agent.py](src/agent_learning/workflows/diagnosis_agent.py)，追踪辅助在 [tracing.py](src/agent_learning/workflows/tracing.py)。新加 / 调整逻辑用 `# (69)` 标记 Tracing、`# (70)` 标记综合流程；前面课程的独立入口保留。
 
 ```bash
 .venv/bin/python main_workflow.py
 ```
 
-审批节点通过 `interrupt(request)` 暂停；入口显示待审批参数，输入 approve 确认或 reject 拒绝，使用 `graph.invoke(Command(resume=...), config=config)` 恢复。恢复必须使用同一个 `thread_id` 与存档器，不是第 65 课的 `invoke(None, config)`。审批值只能补充决定，不能改订单号、租户、操作或工具调用 ID；拒绝或参数不匹配受控结束本轮。
+可以先问「查询 A1002 的退款记录」，再问「它按规则通常多久到账？」；模型根据证据选择业务 Tool 或 RAG，不要求每次都调用全部工具。订单事实保留 JSON 的 `updated_at`，RAG 保留引用与资料不足状态，二者不能混成实时事实。
 
-确认后只生成 `simulated=True` 的模拟结果，不修改 [本地 JSON](data/business_demo.json)。同一会话已模拟取消的订单保存在 State 中，正常重复请求不再次模拟；已到 END 的重复恢复不重新执行。此边界不是生产写操作的 exactly-once 保证，退出重启或换 thread_id 会失去当前会话的模拟记录。
+输入「请取消订单 A1001」练习审批：`interrupt(request)` 暂停，输入 `y` / `approve` 确认或 `n` / `reject` 拒绝，再由 `Command(resume=...)` 恢复同一任务。审批绑定订单、租户、工具调用 ID 与本轮 `run_id`，旧批准不能跨轮重放；确认才进入模拟执行节点，不修改 [业务 JSON](data/business_demo.json) 或数据库。`A1002` 已支付，不支持这个简化取消规则。同会话成功模拟记录保存在 State，不等于生产写操作 exactly-once 保证。
 
-原来的查询订单、支付、退款与 RAG Tool 仍可用：只读查询照常执行，不要求人工确认；`ask_knowledge_base` 保留 RAG 的答案、引用与资料不足状态。订单事实仍以 JSON 的 `updated_at` 为准，模拟取消不能冒充真实业务状态。
+每个新问题生成一个 `run_id`，在同一 `thread_id` 下保留历史但重新初始化本轮预算；人工审批恢复沿用原 `run_id` 和计数，不能重置预算。临时系统错误有限重试，业务失败、永久错误、拒绝或预算不足受控结束，不靠 LLM 再生成失败说明。
 
-继续保留第 66 课的追问、整轮历史裁剪、字符预算和最近一次外层输入 Token 展示，不增加新预算逻辑。正常提问时 `/new` 切换新会话，q 退出；审批等待期间只能提交确认 / 拒绝或退出，不能开始新问题。内存只在当前进程、同一个 `InMemorySaver` 中保留；thread_id 不是操作系统线程，也不代替权限校验或并发锁。
+Tracing 记录会话 / 本轮编号、节点 / Tool / LLM、状态、尝试与耗时，以及输入 / 输出 Token、费用估算和安全失败原因。只在 State 与 Console 展示，不写日志文件，不记录完整问题、资料、结果、密钥或异常正文。外层 Agent 与 RAG 内层的实际 LLM 尝试都计入总次数和预算；父节点包含的耗时不与子调用相加，内层模型费用也不重复记到 Tool 上。
 
-Debug 先看入口的 `graph.invoke()`，再看 `approval_node()` 中的 `interrupt()` 与恢复后的参数校验，最后观察 tool 结果如何加入 messages。动态 interrupt 恢复会从审批节点开头重跑，因此模拟执行必须放在 interrupt 返回并校验之后。具体见 [第 67 课说明](docs/17-human-in-the-loop.md)。
+默认关闭时间限制，Debug 停留只增加耗时，不因断点触发超时。次数、Token 和费用预算仍生效；接口缺失 usage 时，Tracing 标记未知，预算按保守预留计入。演示单价不是 DeepSeek 当前报价，估算费用不是账号账单硬上限。正常提问 `/new` 切换会话，`q` 退出；审批未完成时不能提交新问题。内存存档不跨进程保留。
 
-用户运行入口时才调用所配置的外层模型；模型选择 RAG 时才查询知识库，有有效证据时内部也会调用模型。默认 `USE_OLLAMA=False`，可切换本机已有、支持 Tool Calling 的模型。入口保留 `llm_timeout=None` 便于断点，`local_files_only=True` 不下载模型。本课只做离线验证，没有查询真实知识库、调用真实模型或写业务数据。
+具体技术点见 [第 69 课 Tracing](docs/18-tracing.md)，运行、断点、验收场景和 5 分钟演示见 [第 70 课订单诊断](docs/19-order-diagnosis.md)。本次只做离线验证，没有查询真实知识库、调用真实模型或下载模型。用户主动运行入口才会请求已配置的服务；RAG 被选择时才查询知识库，有有效证据时还会请求内部模型。
 
-第 66 课保留在 [main_workflow_memory.py](main_workflow_memory.py)，只学追问与裁剪，不要求人工审批，详见 [Memory](docs/16-memory.md)。第 65 课保留在 [main_workflow_checkpoint.py](main_workflow_checkpoint.py)，用 tools 前静态暂停对照动态审批，详见 [Checkpoint](docs/15-checkpoint.md)。第 64、63 课入口仍保留 [main_workflow_rag.py](main_workflow_rag.py)、[main_workflow_recovery.py](main_workflow_recovery.py)。
+第 67 课保留在 [main_workflow_approval.py](main_workflow_approval.py)，详见 [人工确认](docs/17-human-in-the-loop.md)；第 66、65、64、63 课分别保留 [Memory](main_workflow_memory.py)、[Checkpoint](main_workflow_checkpoint.py)、[RAG Tool](main_workflow_rag.py)、[重试与预算](main_workflow_recovery.py) 独立入口。
 
 ## 配置在哪里
 
 - [`.env.db`](.env.db)：数据库地址、账号和密码。目标是 `ragdb` 数据库、`public` schema。
 - `.env`：DeepSeek Key，支持旧的 `DEEPSEEK_API_KEY`。如果另配 `LLM_API_KEY`，优先用它。
-- [`.env.example`](.env.example)：模型、Chunk、Top-K 等参数的填写示例。
+- [`.env.public.example`](.env.public.example)：可公开的空凭证模板；数据库连接串、模型 Key 均为空。真实值只填写到本地 `.env.db` / `.env`。
 - [core/config.py](src/agent_learning/core/config.py)：`load_settings()` 中直接用 `load_dotenv()` 和 `os.getenv()` 读取每项配置，没有字段反射。
 
-配置优先级为系统 / IDE 环境变量 > `.env.db` > `.env`。已有配置文件没有修改，数据库账号密码和模型 Key 不会打印。详见 [配置说明](docs/08-db-config.md)。
+配置优先级为系统 / IDE 环境变量 > `.env.db` > `.env`。真实配置文件没有修改。详细配置说明 `docs/08-db-config.md` 含本地连接信息，仅在本地保留，不作为公开仓库文档上传。
+
+## 上传前的敏感信息保护
+
+`.gitignore` 排除了 `.env`、`.env.db`、其他环境配置及其备份、PostgreSQL 密码文件、常见私钥、虚拟环境和本机 IDE 配置。原 `.env.example` 也含直接写入的连接信息，不能作为公开模板；请使用 `.env.public.example`，且保持其中凭证为空。
+
+`old/` 备份、`docs/08-db-config.md`，以及 `python_basic/rag/` 中的 `db.py`、`document_ingest_pipeline.py`、`vector_search_test.py`、`test_pgvector.py`、`prefilter_test.py` 含旧的数据库配置，也已加入忽略规则。原文件仍留在本地，没有删除或改写。
+
+忽略规则只影响未被 Git 跟踪的文件，不能移除已跟踪内容或历史记录。上传前需自行确认暂存内容和历史中没有凭证；如果密钥或密码曾经公开，应立即撤销或更换。不要把终端输出、截图、数据库导出或其他秘密副本放入待上传文件。本次没有执行任何 Git 操作，也没有核查 Git 跟踪状态或历史。
 
 ## 先看哪些代码
 
 1. `main_ingest.py`：看文件路径和是否写库，然后进入 [IngestionPipeline.run()](src/agent_learning/rag/ingestion.py)。
 2. `main_ask.py`：看问题和筛选条件，然后进入 [RAGPipeline.ask()](src/agent_learning/rag/answering.py)。
-3. `main_workflow.py`：看可信租户、thread_id 和审批恢复，再进入 [人工审批图](src/agent_learning/workflows/human_approval_agent.py)。追问与裁剪在 `main_workflow_memory.py` 对照，静态暂停在 `main_workflow_checkpoint.py` 对照。
+3. `main_workflow.py`：看可信租户、预算、thread_id 和审批恢复，再进入 [订单诊断图](src/agent_learning/workflows/diagnosis_agent.py)；[Tracing](src/agent_learning/workflows/tracing.py) 记录关键边界，不改变订单业务结果。旧课入口用于逐项对照。
 4. [cli.py](src/agent_learning/cli.py)：只负责逐个创建 RAG 对象，不再解析命令。每个对象都有独立变量，便于断点查看。
 5. 主流程调用到哪里，再看对应的加载、切分、检索或模型方法。
 
