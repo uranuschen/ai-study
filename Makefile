@@ -1,9 +1,9 @@
 PYTHON ?= .venv/bin/python
 export PYTHONPATH := src
 
-.PHONY: test preview help
-test:
-	$(PYTHON) -B -m unittest discover -s tests -v
+.PHONY: api preview help
+api:
+	$(PYTHON) -B main_api.py
 
 preview:
 	$(PYTHON) -B main_ingest.py

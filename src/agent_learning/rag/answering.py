@@ -343,81 +343,41 @@ class RAGPipeline:
         # 保存运行配置。
         self.settings: Settings = settings
 
-    # RAG核心方法
-    # 方法功能：串联完整问答链路，无有效证据时跳过 LLM，否则生成并校验回答。
-    # 输入：用户问题与可信 SearchFilter；输出：包含 answer、citations、status、trace 的结果字典。
-    # 权限过滤由调用者提供，不能从问题提升权限。
-    # (69) 可选执行对象提供追踪；第 70 课同时共享预算，旧入口不传时保持原链路。
-    def ask(self, question: str, filters: SearchFilter, execution=None) -> dict:
-        # (69) 捕获后只记录出错步骤并原样抛出，不吞掉原有失败。
-        try:
-            # (69) 步骤名称由程序固定，不把问题或资料正文放进运行日志。
-            if execution is not None:
-                # (69) 开始意图识别计时。
-                execution.stage("rag_query")
-            # 原来的意图识别、业务编号提取和保守改写保持不变。
-            plan = self.query_processor.process(question)
-            # 复制可信入口的过滤条件，不允许问题改写覆盖权限。
-            filter_values = filters.to_dict()
-            # 只补充业务编号，不改变租户或权限。
-            filter_values["entity_id"] = filters.entity_id or plan["entity_id"]
-            # 创建本次实际过滤器。
-            effective = SearchFilter(**filter_values)
-            # (69) 记录混合检索耗时，仍由已有检索器完成向量、BM25 与 RRF。
-            if execution is not None:
-                # (69) 自动结束前一个 RAG 步骤。
-                execution.stage("rag_retrieve")
-            # 两路召回、去重、融合与候选 Top-K 保持原实现。
-            hits, trace = self.retriever.retrieve(plan["query"], effective)
-            # (69) 单独记录精排阶段，方便区分检索慢还是模型精排慢。
-            if execution is not None:
-                # (69) 不记录候选原文或查询内容。
-                execution.stage("rag_rerank")
-            # 原始问题和候选一起交给 CrossEncoder，避免改写漂移。
-            ranked = self.reranker.rank(plan["original"], hits) if hits else []
-            # 沿用原来的精排阈值。
-            supported = [hit for hit in ranked if hit.rerank_score >= self.settings.min_rerank_score]
-            # (69) 单独记录证据整理阶段。
-            if execution is not None:
-                # (69) 这里只记时间与状态，不记正文。
-                execution.stage("rag_context")
-            # 原来的连续原文抽取、去重与引用位置校验保持不变。
-            context, citations = self.context_builder.build(supported, plan["original"])
-            # 原调参信息仍留在 RAG 返回值，不自动写入脱敏运行日志。
-            trace.update({"query": plan, "filters": effective.to_dict(), "reranked": len(ranked), "context_chars": len(context), "evidence_count": len(citations)})
-            # 无有效证据时仍不请求模型。
-            if not citations:
-                # (69) 正常资料不足也要结束当前步骤，不标成系统错误。
-                if execution is not None:
-                    # (69) 没有实际 LLM 请求，不产生虚假的 Token 记录。
-                    execution.finish_stage()
-                # 保留原有拒答与来源结构。
-                return {"answer": UNKNOWN, "citations": [], "status": "insufficient_evidence", "trace": trace}
-            # (69) 有证据时才进入生成阶段。
-            if execution is not None:
-                # (69) 该阶段是内部 LLM 事件的父级，不再次累计 Token。
-                execution.stage("rag_generate")
-            # 原 Prompt 规则与不可信资料边界保持不变。
-            messages = self.prompt_builder.build(plan["original"], context)
-            # (70) 新入口通过 execution 共享预算；旧入口仍直接返回原始字符串。
-            raw = self.llm.chat(messages) if execution is None else execution.chat(self.llm, messages)
-            # (69) 将回答校验耗时与模型生成耗时分开观察。
-            if execution is not None:
-                # (69) 不记录待校验的模型原文。
-                execution.stage("rag_validate")
-            # 引用与可回答性仍由已有校验器决定。
-            answer, used, status = self.validator.validate(raw, citations)
-            # (69) 最后一步只结束一次。
-            if execution is not None:
-                # (69) 无效回答属于原有业务状态，不擅自变成临时系统异常。
-                execution.finish_stage()
-            # 返回格式保持不变，供原有 Tool 包装使用。
-            return {"answer": answer, "citations": used, "status": status, "trace": trace}
-        # (69) 错误分类和阶段信息用于定位，原异常不写入日志。
-        except Exception as error:
-            # (69) 仅新入口提供运行追踪对象。
-            if execution is not None:
-                # (69) 记录真正出错的最后一个步骤。
-                execution.finish_stage(error)
-            # (70) 交给工作流区分临时故障、业务失败与预算停止。
-            raise
+    # 串联检索、精排、生成和引用校验，只返回答案、引用与业务结果。
+    def ask(self, question: str, filters: SearchFilter) -> dict:
+        # 清理问题、识别意图并提取业务编号。
+        plan = self.query_processor.process(question)
+        # 复制服务端提供的资料权限。
+        filter_values = filters.to_dict()
+        # 问题只能补充业务编号，不能提高租户或读取权限。
+        if not filters.entity_id:
+            # 没有指定编号时，使用问题中明确出现的编号。
+            filter_values["entity_id"] = plan["entity_id"]
+        # 创建本次检索使用的筛选条件。
+        effective = SearchFilter(**filter_values)
+        # 执行向量、BM25 和融合召回。
+        hits = self.retriever.retrieve(plan["query"], effective)
+        # 对候选资料进行精排。
+        ranked = self.reranker.rank(plan["original"], hits)
+        # 只保留达到精排阈值的资料。
+        supported = []
+        # 按精排顺序检查资料。
+        for hit in ranked:
+            # 分数不足的资料不进入回答上下文。
+            if hit.rerank_score >= self.settings.min_rerank_score:
+                # 保留满足要求的候选。
+                supported.append(hit)
+        # 整理证据和真实引用位置。
+        context, citations = self.context_builder.build(supported, plan["original"])
+        # 没有证据时直接拒答，不调用模型。
+        if not citations:
+            # 资料不足属于业务结果。
+            return {"answer": UNKNOWN, "citations": [], "status": "insufficient_evidence"}
+        # 将问题与资料组成模型消息。
+        messages = self.prompt_builder.build(plan["original"], context)
+        # 请求模型生成回答。
+        raw = self.llm.chat(messages)
+        # 检查回答格式和引用。
+        answer, used, status = self.validator.validate(raw, citations)
+        # 不返回内部检索过程或执行统计。
+        return {"answer": answer, "citations": used, "status": status}

@@ -63,7 +63,17 @@ def validate_approval(decision: dict, request: dict) -> bool:
         #（67课新加）格式不正确时不执行模拟操作。
         return False
     #（67课新加）只接受明确确认或拒绝，且所有审批目标字段必须与当前请求一致。
-    return decision["decision"] in ("approve", "reject") and all(decision[key] == value for key, value in request.items())
+    if decision["decision"] not in ("approve", "reject"):
+        # 无明确决定时拒绝执行。
+        return False
+    # 逐项检查审批编号和业务目标，便于单步调试。
+    for key, value in request.items():
+        # 任何字段发生改变都不是原来的审批。
+        if decision[key] != value:
+            # 不允许通过人工响应替换目标。
+            return False
+    # 所有字段都匹配才接受决定。
+    return True
 
 
 #（67课新加）模拟执行只产生结果字典；不修改订单、不调用外部写接口。

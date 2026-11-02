@@ -22,8 +22,6 @@ class WorkflowState(TypedDict):
     payment_result: dict
     # 单独保存退款 Tool 的完整结果，{} 表示尚未查询。
     refund_result: dict
-    # 保存实际调用的 Tool 名称，便于观察哪些步骤被跳过。
-    executed_tools: list
     # 保存总结节点确定的业务结束分支。
     branch: str
     # 保存根据已有业务结果生成的总结。
@@ -44,8 +42,6 @@ def prepare_node(state: WorkflowState) -> dict:
         "payment_result": {},
         # 退款节点未执行时保持 {}，不是没有退款记录的 []。
         "refund_result": {},
-        # 每次调用从空的 Tool 执行列表开始。
-        "executed_tools": [],
         # 结束分支由总结节点写入。
         "branch": "",
         # 总结节点执行前没有最终回答。
@@ -54,7 +50,7 @@ def prepare_node(state: WorkflowState) -> dict:
     }
 
 
-# 方法功能：查询订单，只更新订单结果和 Tool 执行列表。
+# 方法功能：查询订单，只更新当前订单结果。
 def get_order_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE) -> dict:
     # 防止意外的 Python 异常直接中断整个工作流。
     try:
@@ -68,8 +64,6 @@ def get_order_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE) ->
     return {
         # 保留 success、data、error 三个字段。
         "order_result": result,
-        # 创建新列表，不直接修改原 State 中的列表。
-        "executed_tools": state["executed_tools"] + ["get_order"],
     # 结束返回字典。
     }
 
@@ -102,8 +96,6 @@ def get_payment_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE) 
     return {
         # 支付结果保存为列表或失败信息。
         "payment_result": result,
-        # 在已执行的订单 Tool 后面追加支付 Tool。
-        "executed_tools": state["executed_tools"] + ["get_payment"],
     # 结束返回字典。
     }
 
@@ -148,8 +140,6 @@ def get_refund_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE) -
     return {
         # 成功的空列表表示已查过但没有退款记录。
         "refund_result": result,
-        # 记录退款 Tool 确实执行过。
-        "executed_tools": state["executed_tools"] + ["get_refund"],
     # 结束返回字典。
     }
 

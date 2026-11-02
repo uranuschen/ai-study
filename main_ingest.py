@@ -16,7 +16,7 @@ FILE_PATH = BASE_DIR / "data" / "rechunk_two_documents.json"
 # 文件没有指定租户时，使用这个默认值。
 TENANT_ID = "acme"
 # False 只预览；用户准备好表后可改为 True，生成向量并入库。
-WRITE_TO_DB = True
+WRITE_TO_DB = False
 
 
 # 方法功能：读取配置，调用入库流程，打印每篇资料的处理结果。

@@ -93,7 +93,7 @@ def ask_knowledge_base(question: str, pipeline: RAGPipeline, filters: SearchFilt
     try:
         # 在这一行打断点，可以进入现有 RAGPipeline.ask()。
         result = pipeline.ask(question.strip(), filters)
-        # 不传 trace；本课只关心答案、原始引用和可回答状态。
+        # 只传答案、原始引用和可回答状态。
         data = {"answer": result["answer"], "citations": result["citations"], "status": result["status"]}
         # 资料不足也是一次已完成的查询，模型应按 status 明确拒答。
         return tool_result(True, data=data)

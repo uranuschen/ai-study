@@ -1,29 +1,17 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-> 状态：已实现第 60–67 课的 JSON Tool、多步业务工作流、Agent loop、重试 / 预算、RAG Tool、内存 Checkpoint、会话 Memory 和模拟取消订单的人工确认；第 69 / 70 课补充 Tracing 并贯通诊断与验收。新增流程仅离线验证；PostgreSQL 业务 Tool 和 MCP 尚未接入。本文件不是执行数据库建表、初始化或连接数据库的授权。
+当前入口已统一为 `main_api.py`，调用与断点见 [FastAPI](20-fastapi.md)。已实现截至第 70 课的核心能力；执行追踪、用量费用统计和日志已移除。PostgreSQL 业务 Tool 和 MCP 尚未接入，本文件不授权建表、初始化或数据库操作。
 
 ## 已确认的边界
 
-- 现有 `main_ingest.py`、`main_ask.py` 和 `public` 下六张 `kb_*` 表继续服务 RAG，不因学习工作流或 MCP 而改动。
-- 后续优先使用现有 PostgreSQL `ragdb`。订单、支付、退款是业务数据，拟放在独立的 `biz` schema；知识库仍保留在 `public`。不把业务表强行切成向量块。
-- 工作流与 MCP 共用同一批只读业务 Tool；租户和可读权限来自可信入口，不能让模型根据问题自行提高权限。所有 SQL 使用固定查询与参数绑定，不开放任意 SQL Tool。
-- 现有知识库中的订单和退款资料是带 `snapshot_at` 的快照。回答当前状态时，以业务 Tool 返回的最新可用状态及其更新时间为准；RAG 用于制度、流程及注明时间的历史资料，避免旧快照覆盖较新的业务状态。
-
-当前 `RAGPipeline.ask()` 是固定的 RAG 问答链路：检索、精排、组装证据、调用 LLM、校验回答；它不会根据工具结果自主选择下一个 Tool 并循环。历史 `python_basic/toolcalling/` 的消息、工具声明、分发与结果回传方式，已在第 62 课迁移为 `workflows/agent_loop.py` 的 LangGraph 循环，旧图保留对照。第 65 课学习图状态保存与恢复；第 66 课进一步保留同会话消息，支持追问并整轮裁剪历史。
-
-第 63 课的 `workflows/recovery_agent.py` 和入口 `main_workflow_recovery.py` 保留。临时系统异常有限重试且消耗总次数，已知业务失败进独立 failure 节点；控制模型 / Tool 次数、协作式时间、Token 和按配置单价的估算费用。客户端超时不等于远端取消，本地同步 Tool 仅返回后检测超时；远端任务终止和写操作幂等性仍是后续检查点。教学单价不是 DeepSeek 实时报价，本课不声称实现账号账单硬上限。
-
-第 64 课 `workflows/rag_agent.py` 的简版和入口 `main_workflow_rag.py` 保留：只有 prepare、model、tools 三个节点，回答后进入 END，不加入预算、次数记录、重试或时间限制。`ask_knowledge_base` 包装现有 `RAGPipeline.ask()`，保留 `answer/citations/status`。RAG 只查可信入口指定的 policy/process/faq；模型仅提供规则问题，不修改租户、权限或资料类型。订单事实仍来自 JSON 业务 Tool 并保留 `updated_at`；引用按每次 Tool 调用单独保留，不跨调用合并编号。这里保留来源和提示事实边界，不宣称已严格校验外层回答的每个语义事实。
-
-第 65 课 `workflows/checkpoint_agent.py` 和入口 `main_workflow_checkpoint.py` 保留工具前静态暂停及手动恢复：首次传初始 dict，恢复传 None。模型异常留下的待执行节点可在排查后手动继续，没有自动重试；失败节点会重新执行，Checkpoint 不保证副作用只执行一次。
-
-第 66 课 `workflows/memory_agent.py` 和入口 `main_workflow_memory.py` 保留：只创建一次图和 InMemorySaver，同一 thread_id 的新问题从 prepare 开始，保留旧消息并追加 user，每轮重置工具结果和结束原因。按完整轮次裁剪历史，字符预算包括 messages 与 Tool schemas；当前轮超预算时受控结束。`/new` 切换新编号，不删除旧存档。没有工具前静态暂停、摘要、自动重试或长期 Memory。InMemorySaver 不跨进程保留；裁剪当前消息不删除旧 Checkpoint 快照；thread_id 不代替权限校验或并发锁。具体学习步骤见 [第 66 课](16-memory.md)。
-
-第 67 课入口保留为 `main_workflow_approval.py`，使用 `workflows/human_approval_agent.py`：保留查询 Tool 与 Memory，只新增 `cancel_order` 的模拟审批。审批节点 `interrupt(request)` 暂停，入口以同一 config 和 `Command(resume=...)` 确认 / 拒绝。程序绑定目标订单、可信租户与工具调用 ID；只有匹配的人工确认才能生成模拟结果，不修改 JSON 或数据库。动态 interrupt 恢复会从审批节点开头重跑；同会话保存已模拟订单，检查正常重复请求 / 已结束恢复不再次执行，但不承诺真实写操作 exactly-once。详见 [第 67 课](17-human-in-the-loop.md)。
-
-当前 `main_workflow.py` 使用第 70 课 `workflows/diagnosis_agent.py`，复用以上消息、业务规则、审批校验与重试 / 预算函数。每个新问题生成一个 `run_id` 并重置本轮预算，同一 `thread_id` 保留会话与模拟记录；审批恢复沿用当前编号与计数。单 Tool 执行后保存队列进度，审批与模拟执行分节点。外层 Agent 与 RAG 内层模型都通过统一的请求边界记账，缺失 usage 时按保守预留控制预算；默认关闭时间限制便于 Debug。
-
-第 69 课 `workflows/tracing.py` 只在 State / Console 保存脱敏事件，以 `thread_id`、`run_id` 和父子 span 关联节点、Tool、RAG 阶段和 LLM 尝试；不记录完整提示、结果、异常正文或凭证。Token / 费用只对实际模型尝试记一次，不把父子耗时相加。教学单价和未知用量预留不等于实际账单或账户硬限额。详见 [Tracing](18-tracing.md) 与 [订单诊断验收](19-order-diagnosis.md)。
+- API → 普通 Service → RAG / LangGraph / 业务 Tool，Service 直接写实现，不增加接口类或 Impl。
+- RAG 继续使用现有 public 下六张 kb_* 表，SQL 与表结构不改。
+- 订单、支付、退款只读本地 JSON，取消只模拟；后续真实业务数据优先调用已有业务服务。
+- 知识库提供规则，业务 Tool 提供订单事实，历史资料不能覆盖最新可用业务结果。
+- 租户与读取权限来自服务端，不能由问题、模型工具参数或 HTTP 请求正文提高权限。
+- Checkpoint 与会话保留在当前进程；session_id 仅用于续聊和恢复，同会话串行执行。
+- 审批编号绑定当前操作，审批与模拟执行分节点；旧编号不能用于新的请求。
+- 有限重试与执行上限保留，执行事件、节点 / Tool 统计、Token 与金额记账不再存在。
 
 RAG、Agent 工作流和 MCP 可以用于自然语言助手，也可以由 Issue、CI 日志、运维告警、库存预警等结构化事件触发；它们不要求用户先提出问题。RAG 提供相关资料作为证据，Agent 或工作流根据任务和 Tool 结果决定后续步骤，MCP 负责让外部 AI 客户端发现并调用 Tool。不是每个场景都需要同时使用三者；判断依据是是否存在非结构化资料、需要随结果变化的步骤，以及跨客户端复用 Tool 的需求。
 
@@ -71,24 +59,9 @@ RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六�
 
 ## 新目录、入口与 MCP 调用方向
 
-以下是逐课新增的目标位置；Console、`workflows/`、JSON 订单样例和 `business/tools.py` 已创建，PostgreSQL 与 MCP 仍是后续计划，旧 RAG 入口不改动：
+当前正式入口是 `main_api.py`，接口位于 `src/agent_learning/api/`，Service 位于 `services/`。`bootstrap.py` 显式构造依赖；`workflows/` 保留基础图、固定流程和综合诊断图，`business/` 提供 JSON 只读查询，`rag/` 保留资料与问答组件。
 
-```text
-main_workflow.py                 # 第 69 / 70 课：Tracing、诊断综合与执行预算
-main_workflow_approval.py        # 第 67 课：保留模拟取消订单、人工确认与恢复
-main_workflow_memory.py          # 第 66 课：保留会话 Memory、追问与历史裁剪
-main_workflow_checkpoint.py      # 第 65 课：保留内存 Checkpoint 与暂停恢复
-main_workflow_rag.py             # 第 64 课：保留简版 Agent 与 RAG Tool
-main_workflow_recovery.py        # 第 63 课：保留重试、失败分支与执行预算
-main_mcp_server.py               # 本地 MCP Server 入口
-main_mcp_client.py               # 独立 MCP Client 演示入口
-src/agent_learning/workflows/   # 保留旧图；新增 diagnosis_agent.py / tracing.py
-src/agent_learning/business/    # 已实现三个 JSON 查询 Tool；PostgreSQL 留待后续
-src/agent_learning/mcp_app/     # MCP Server/Client 适配代码
-data/business_demo.json         # 已有订单、支付、退款模拟数据
-sql/05_business_schema.sql      # 后续建表文本，用户手动执行
-sql/06_business_seed.sql        # 后续演示 INSERT 文本，用户手动执行
-```
+MCP Server / Client 仍为后续课程；不会因为本次 API 改写自动增加 MCP 或业务数据库结构。后续如需业务表 SQL，仍先提供文本供用户审阅和手动执行。
 
 第一阶段让工作流直接调用业务 Tool 和现有 RAG Tool。学习循环时，工作流在 State 中保存问题、已取得的订单/支付/退款结果、错误和调用次数；每一步决定继续调用哪个 Tool，或在证据足够时结束，并设置最大步骤数避免死循环。订单诊断可以是“查订单 → 按结果查支付或退款 → 必要时查制度 → 总结”，不要求每个问题都调用全部 Tool。
 

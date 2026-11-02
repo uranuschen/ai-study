@@ -117,35 +117,40 @@ class CompatibleChatModel:
         # 不创建网络连接。
         self.settings = settings
 
-    # 方法功能：检查凭证后调用兼容模型 API，读取第一条回答并关闭客户端。
-    # 输入：role/content 消息列表；输出：模型原始字符串，后续交给 AnswerValidator 校验。
-    # 统一超时、模型和温度。
+    # 调用模型并返回文字，不读取用量，不生成执行日志。
     def chat(self, messages):
-        # (69) 原入口仍返回文字；详细响应交给新方法读取，保持旧调用方式。
-        response = self.request(messages, timeout=self.settings.llm_timeout, max_retries=1)
-        # (69) 不把 usage 混入 RAG 的原始回答字符串。
-        return response["content"]
-
-    # (69) 同时返回文字与 usage，供新课程统计 RAG 内部模型请求。
-    def request(self, messages: list, timeout=None, max_tokens: int = 1200, max_retries: int = 0) -> dict:
         from openai import OpenAI
-        # 防止缺少凭证时发送请求。
+        # 缺少密钥时不发送请求。
         if not self.settings.llm_api_key:
-            # 不输出密钥。
-            raise ValueError("请设置 LLM_API_KEY 或 DEEPSEEK_API_KEY")
-        # 本地模型加载和生成可能较慢，明确提示当前已经进入回答阶段。
-        if self.settings.llm_base_url.startswith("http://127.0.0.1:11434/"):
-            # 立即显示状态，避免终端长时间空白。
-            print(f"正在等待本地模型 {self.settings.llm_model} 生成回答...", flush=True)
-        # (70) 综合入口传入零次 SDK 重试，所有实际尝试都由工作流计数和检查预算。
-        with OpenAI(api_key=self.settings.llm_api_key, base_url=self.settings.llm_base_url, timeout=timeout, max_retries=max_retries) as client:
-            # (70) 输出上限由本轮预算提供；旧入口仍沿用默认值。
-            result = client.chat.completions.create(model=self.settings.llm_model, messages=messages, temperature=0, max_tokens=max_tokens)
-        # (69) 用量缺失保留空字典，不伪造为零 Token。
-        usage = result.usage.model_dump(exclude_none=True) if result.usage is not None else {}
-        # (69) 空候选也保留已经产生的用量，交给调用方受控结束。
-        if not result.choices:
-            # (69) 不把空响应伪装成成功回答。
-            return {"content": "", "usage": usage, "finish_reason": "empty"}
-        # (69) 返回独立的文字、用量与结束原因，不修改原有引用校验。
-        return {"content": result.choices[0].message.content or "", "usage": usage, "finish_reason": result.choices[0].finish_reason}
+            # 只提示配置项名称。
+            raise ValueError("请配置 LLM_API_KEY 或 DEEPSEEK_API_KEY。")
+        # 超时只限制网络请求，不统计执行耗时。
+        with OpenAI(
+            api_key=self.settings.llm_api_key,
+            base_url=self.settings.llm_base_url,
+            timeout=self.settings.llm_timeout,
+            max_retries=0,
+        ) as client:
+            # 只读取完整的模型回答。
+            response = client.chat.completions.create(
+                model=self.settings.llm_model,
+                messages=messages,
+                temperature=0,
+                max_tokens=1200,
+            )
+        # 没有完整候选时交给调用方处理失败。
+        if not response.choices:
+            # 不返回虚假的成功结果。
+            raise ValueError("模型未返回回答。")
+        # 不接受截断内容。
+        choice = response.choices[0]
+        # RAG 需要完整的文字回答。
+        if choice.finish_reason != "stop":
+            # 不用半截回答进行引用校验。
+            raise ValueError("模型响应不完整。")
+        # 没有文字时按无效响应处理。
+        if not isinstance(choice.message.content, str):
+            # 不把其他类型转换成回答。
+            raise ValueError("模型回答格式无效。")
+        # 返回原始文字，后续由引用校验器检查。
+        return choice.message.content

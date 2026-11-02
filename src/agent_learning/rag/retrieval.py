@@ -9,6 +9,8 @@ from agent_learning.rag.repository import PostgresRepository
 # BM25 与查询共用中文分词规则。
 def tokenize(text):
     import jieba
+    # 关闭分词库的缓存构建提示，不输出执行日志。
+    jieba.setLogLevel(50)
     # 去空白和标点。
     return [word.lower() for word in jieba.lcut(text) if re.search(r"[\w\u4e00-\u9fff]", word)]
 
@@ -232,9 +234,9 @@ class HybridRetriever:
         self.fusion = ResultFusion(settings.fusion, settings.vector_weight)
 
     # 方法功能：用同一过滤器执行两路召回，再融合为供精排使用的候选。
-    # 输入：改写后的问题和 SearchFilter；输出：候选 Hit 列表与召回数量统计。
+    # 输入：改写后的问题和 SearchFilter；输出：供精排使用的候选 Hit 列表。
     # 两路严格使用相同权限与元数据过滤。
-    def retrieve(self, query: str, filters: SearchFilter) -> tuple[list[Hit], dict[str, int]]:
+    def retrieve(self, query: str, filters: SearchFilter) -> list[Hit]:
         # 第一路 向量化
         # 1，向量化开始
         # 加了前缀 
@@ -262,5 +264,5 @@ class HybridRetriever:
         
         # 向量检索和 BM25 关键词检索的结果合在一起，按子块 id 去重，算一个rrf融合分，最后取前 k 个。 比较核心
         candidates = self.fusion.merge(vector_hits, keyword_hits, self.settings.candidate_k)
-        # 返回阶段统计。
-        return candidates, {"vector_hits": len(vector_hits), "bm25_hits": len(keyword_hits), "candidates": len(candidates)}
+        # 只返回业务候选，不附带统计信息。
+        return candidates
