@@ -21,7 +21,11 @@ def error_kind(error: Exception) -> str:
     # (69) HTTP 只保留状态码类别，不保存响应正文。
     if isinstance(error, APIStatusError):
         # (69) 服务端错误和客户端错误分开统计。
-        return "http_5xx" if error.status_code >= 500 else "http_4xx"
+        if error.status_code >= 500:
+            # (69) 5xx 表示服务端错误。
+            return "http_5xx"
+        # (69) 其他 HTTP 错误归入客户端错误。
+        return "http_4xx"
     # (69) 参数、结构与 JSON 校验错误归入校验失败。
     if isinstance(error, (ValueError, TypeError, KeyError)):
         # (69) 不输出错误参数本身。
@@ -33,7 +37,17 @@ def error_kind(error: Exception) -> str:
 # (69) 参数日志只保留白名单字段，未知字段连字段名也不输出。
 def safe_arguments(name: str, arguments: str) -> dict:
     # (69) 工具名称由调用方白名单限制，此处只识别本课实际使用的参数。
-    allowed = {"question"} if name == "ask_knowledge_base" else {"order_id"} if name in {"get_order", "get_payment", "get_refund", "cancel_order"} else set()
+    if name == "ask_knowledge_base":
+        # (69) 知识库工具只接受问题字段。
+        allowed = {"question"}
+    # (69) 订单类工具只接受订单号字段。
+    elif name in {"get_order", "get_payment", "get_refund", "cancel_order"}:
+        # (69) 不把其他业务字段写入日志。
+        allowed = {"order_id"}
+    # (69) 未知工具没有可记录的参数。
+    else:
+        # (69) 创建空集合，表示不允许任何字段。
+        allowed = set()
     # (69) 非字符串参数不能交给 JSON 解析，也不能原样输出。
     if not isinstance(arguments, str):
         # (69) 用固定提示替代可能敏感的原值。
@@ -51,7 +65,15 @@ def safe_arguments(name: str, arguments: str) -> dict:
         # (69) 不显示不合法参数中的内容。
         return {"status": "invalid", "fields": []}
     # (69) 只列出允许的字段，避免秘密藏在未知键名中。
-    fields = sorted(allowed.intersection(payload))
+    fields = []
+    # (69) 逐个检查白名单字段是否出现在参数中。
+    for field in allowed:
+        # (69) 参数中确实有这个字段时才记录字段名。
+        if field in payload:
+            # (69) 这里只添加字段名，不添加原始字段值。
+            fields.append(field)
+    # (69) 固定字段顺序，便于对照日志和测试结果。
+    fields.sort()
     # (69) 所有摘要都用固定结构表达是否成功解析。
     result = {"status": "valid", "fields": fields}
     # (69) 问题属于自由文本，始终完整遮盖。
@@ -88,7 +110,11 @@ class TraceRecorder:
         # (69) 超长、带空格或特殊字符的标识统一遮盖。
         if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_.:#-]{1,128}", value):
             # (69) 空值使用调用方指定的固定默认值。
-            return fallback if not value else "[REDACTED]"
+            if not value:
+                # (69) 例如没有父跨度时，保留默认空字符串。
+                return fallback
+            # (69) 非空但格式不合法的内容全部遮盖。
+            return "[REDACTED]"
         # (69) 调用方只传入受信任的技术标识和固定名称。
         return value
 
@@ -114,7 +140,15 @@ class TraceRecorder:
         return str(amount)
 
     # (69) 开始一次节点、工具或模型调用，并返回当前跨度信息。
-    def start(self, kind: str, name: str, parent_id: str = "", attempt: int = 0, retry: int = 0, tool_call_id: str = "") -> dict:
+    def start(
+        self,
+        kind: str,
+        name: str,
+        parent_id: str = "",
+        attempt: int = 0,
+        retry: int = 0,
+        tool_call_id: str = "",
+    ) -> dict:
         # (69) 跨度种类固定，不允许把任意用户文字用作日志类别。
         if kind not in {"node", "tool", "llm", "approval", "run"}:
             # (69) 配置错误直接提示固定文字。
@@ -125,92 +159,375 @@ class TraceRecorder:
         span_id = uuid4().hex
         # (69) 名称来自程序白名单，额外限制字符与长度。
         safe_name = self._identifier(name, "unknown")
-        # (69) 父跨度必须来自当前执行，不能跨 run 关联旧事件。
-        parent = next((event for event in reversed(events) if event.get("phase") == "start" and event.get("span_id") == parent_id and event.get("run_id") == self._identifier(self.state.get("run_id")) and event.get("thread_id") == self._identifier(self.state.get("thread_id"))), {})
-        # (69) 工具调用 ID 可能来自模型自由输出，统一短哈希后才能记录。
-        call_id = "call#" + hashlib.sha256(tool_call_id.encode("utf-8")).hexdigest()[:12] if isinstance(tool_call_id, str) and tool_call_id else ""
+        # (69) 先取出本轮和本会话的安全编号，后面逐项比较。
+        run_id = self._identifier(self.state.get("run_id"))
+        # (69) 父事件必须属于同一个会话。
+        thread_id = self._identifier(self.state.get("thread_id"))
+        # (69) 默认没有父事件，找不到时继续使用空字典。
+        parent = {}
+        # (69) 从最新事件往前找，找到第一个符合条件的事件就停止。
+        for event in reversed(events):
+            # (69) 父事件必须是开始事件，结束事件直接跳过。
+            if event.get("phase") != "start":
+                # (69) continue 表示继续检查上一条事件。
+                continue
+            # (69) 跨度编号必须等于调用方传入的父跨度编号。
+            if event.get("span_id") != parent_id:
+                # (69) 不是要找的父跨度就跳过。
+                continue
+            # (69) 其他轮次的事件不能作为本轮的父事件。
+            if event.get("run_id") != run_id:
+                # (69) 跳过旧问题留下的事件。
+                continue
+            # (69) 其他会话的事件也不能作为父事件。
+            if event.get("thread_id") != thread_id:
+                # (69) 跳过其他会话的事件。
+                continue
+            # (69) 四项检查都通过，保存找到的父事件。
+            parent = event
+            # (69) break 表示已经找到，不再继续往前搜索。
+            break
+        # (69) 默认没有工具调用编号。
+        call_id = ""
+        # (69) 工具调用 ID 可能来自模型自由输出，只接受非空字符串。
+        if isinstance(tool_call_id, str) and tool_call_id:
+            # (69) 先把字符串转换成哈希函数需要的字节。
+            call_bytes = tool_call_id.encode("utf-8")
+            # (69) 哈希摘要用于定位调用，不回显原始调用 ID。
+            call_hash = hashlib.sha256(call_bytes).hexdigest()
+            # (69) 只保留前 12 位摘要，并加上固定前缀。
+            call_id = "call#" + call_hash[:12]
+        # (69) 子步骤没有新的调用编号时，沿用父事件的安全编号。
+        if not call_id:
+            # (69) 没有父事件时得到空字符串。
+            call_id = parent.get("tool_call_id", "")
+        # (69) 默认沿用父事件所属的节点。
+        node_name = parent.get("node", "")
+        # (69) 当前事件本身就是节点时，使用当前节点名。
+        if kind == "node":
+            # (69) 子 Tool 和模型可据此知道自己属于哪个节点。
+            node_name = safe_name
+        # (69) 默认沿用父事件所属的工具。
+        tool_name = parent.get("tool", "")
+        # (69) 当前事件本身就是工具时，使用当前工具名。
+        if kind == "tool":
+            # (69) 工具内部的模型调用可继承这个名称。
+            tool_name = safe_name
+        # (69) 不合法的尝试次数统一记为零。
+        safe_attempt = 0
+        # (69) bool 不能冒充整数次数。
+        if type(attempt) is int and attempt >= 0:
+            # (69) 保存合法的非负次数。
+            safe_attempt = attempt
+        # (69) 不合法的重试次数也统一记为零。
+        safe_retry = 0
+        # (69) 只接受非负整数重试次数。
+        if type(retry) is int and retry >= 0:
+            # (69) 保存合法的重试次数。
+            safe_retry = retry
         # (69) 仅构造固定字段，不复制 State 中的消息、结果或配置。
         span = {
-            "thread_id": self._identifier(self.state.get("thread_id")),
-            "run_id": self._identifier(self.state.get("run_id")),
+            "thread_id": thread_id,
+            "run_id": run_id,
             "span_id": span_id,
             "parent_id": parent.get("span_id", ""),
             "kind": kind,
             "name": safe_name,
-            "node": safe_name if kind == "node" else parent.get("node", ""),
-            "tool": safe_name if kind == "tool" else parent.get("tool", ""),
-            "attempt": attempt if type(attempt) is int and attempt >= 0 else 0,
-            "retry": retry if type(retry) is int and retry >= 0 else 0,
-            "tool_call_id": call_id or parent.get("tool_call_id", ""),
+            "node": node_name,
+            "tool": tool_name,
+            "attempt": safe_attempt,
+            "retry": safe_retry,
+            "tool_call_id": call_id,
             "started_at": self.clock(),
         }
         # (69) 开始事件使用独立字典，后续结束不会修改历史事件。
-        events.append({**span, "phase": "start", "status": "running"})
+        event = dict(span)
+        # (69) 标明这是开始事件。
+        event["phase"] = "start"
+        # (69) 刚开始的步骤处于运行中。
+        event["status"] = "running"
+        # (69) 将新事件加入本轮列表。
+        events.append(event)
         # (69) 调用方把跨度传给 finish，完成同一次调用。
         return span
 
     # (69) 结束跨度时只保留安全字段、耗时、用量和费用。
-    def finish(self, span: dict, status: str, error=None, usage=None, reserved_input: int = 0, reserved_output: int = 0, estimated_cost=None) -> None:
+    def finish(
+        self,
+        span: dict,
+        status: str,
+        error=None,
+        usage=None,
+        reserved_input: int = 0,
+        reserved_output: int = 0,
+        estimated_cost=None,
+    ) -> None:
         # (69) 只允许复制记录器定义的字段，不保存调用方附带的任意内容。
-        fields = ("thread_id", "run_id", "span_id", "parent_id", "kind", "name", "node", "tool", "attempt", "retry", "tool_call_id", "started_at")
-        # (69) span 由 start 返回，结束事件保持同一关联信息。
-        event = {name: span[name] for name in fields}
+        fields = (
+            "thread_id",
+            "run_id",
+            "span_id",
+            "parent_id",
+            "kind",
+            "name",
+            "node",
+            "tool",
+            "attempt",
+            "retry",
+            "tool_call_id",
+            "started_at",
+        )
+        # (69) 新建结束事件，不修改原来的开始记录。
+        event = {}
+        # (69) 逐个复制允许记录的字段。
+        for name in fields:
+            # (69) span 由 start 返回，结束事件保持同一关联信息。
+            event[name] = span[name]
         # (69) 使用单调时间差；负值归零，避免测试时钟回拨造成负耗时。
         duration = self.clock() - span["started_at"]
         # (69) 非有限时间不能进入汇总结果。
-        duration = max(0.0, duration) if math.isfinite(duration) else None
-        # (69) 错误只保留类别，绝不记录 str(error) 或 traceback。
-        event.update({"phase": "end", "status": self._identifier(status, "unknown"), "duration_seconds": duration, "error_kind": error_kind(error) if error is not None else ""})
+        if not math.isfinite(duration):
+            # (69) 无穷或 NaN 用未知表示。
+            duration = None
+        # (69) 零耗时与测试时钟回拨造成的负耗时统一记为 0.0。
+        elif duration <= 0:
+            # (69) 耗时最小为零秒。
+            duration = 0.0
+        # (69) 标明当前事件是结束事件。
+        event["phase"] = "end"
+        # (69) 状态也经过安全字符检查。
+        event["status"] = self._identifier(status, "unknown")
+        # (69) 保存刚才算出的耗时。
+        event["duration_seconds"] = duration
+        # (69) 默认没有错误类别。
+        event["error_kind"] = ""
+        # (69) 有异常时只保存类别，不保存异常正文。
+        if error is not None:
+            # (69) 不调用 str(error)，避免暴露请求或凭证。
+            event["error_kind"] = error_kind(error)
         # (69) 只有模型调用记录 Token，父节点和工具不能重复记账。
         if event["kind"] == "llm":
-            # (69) 两个基础用量必须同时为非负整数，bool 也不能冒充 Token 数。
-            known = isinstance(usage, dict) and all(type(usage.get(name)) is int and usage[name] >= 0 for name in ("prompt_tokens", "completion_tokens"))
-            # (69) 预留值用于预算控制，不当成接口实际返回的 Token。
-            event.update({"usage_source": "api_usage" if known else "unknown", "input_tokens": usage["prompt_tokens"] if known else None, "output_tokens": usage["completion_tokens"] if known else None, "uncategorized_tokens": None, "total_tokens": None, "reserved_input_tokens": reserved_input if type(reserved_input) is int and reserved_input >= 0 else 0, "reserved_output_tokens": reserved_output if type(reserved_output) is int and reserved_output >= 0 else 0})
+            # (69) 默认用量未知，只有两个基础字段都合法时才算已知。
+            known = False
+            # (69) 先确认 usage 是字典，才能读取其中的字段。
+            if isinstance(usage, dict):
+                # (69) 接下来逐个检查输入与输出 Token。
+                known = True
+                # (69) 两个字段都必须是非负整数。
+                for name in ("prompt_tokens", "completion_tokens"):
+                    # (69) 缺失字段得到 None，也会被下面的类型检查拒绝。
+                    token_count = usage.get(name)
+                    # (69) bool 不能冒充 Token 数。
+                    if type(token_count) is not int:
+                        # (69) 任意一个字段不合法，整次用量就是未知。
+                        known = False
+                        # (69) 已经确定无效，不必再检查另一个字段。
+                        break
+                    # (69) Token 数也不能是负数。
+                    if token_count < 0:
+                        # (69) 负数用量不能参与统计。
+                        known = False
+                        # (69) 停止本次字段检查。
+                        break
+            # (69) 先填写未知用量的默认记录。
+            event.update({
+                "usage_source": "unknown",
+                "input_tokens": None,
+                "output_tokens": None,
+                "uncategorized_tokens": None,
+                "total_tokens": None,
+                "reserved_input_tokens": 0,
+                "reserved_output_tokens": 0,
+            })
+            # (69) 输入预留只接受非负整数。
+            if type(reserved_input) is int and reserved_input >= 0:
+                # (69) 预留只用于预算，不冒充接口实测用量。
+                event["reserved_input_tokens"] = reserved_input
+            # (69) 输出预留也只接受非负整数。
+            if type(reserved_output) is int and reserved_output >= 0:
+                # (69) 单独保存输出预留。
+                event["reserved_output_tokens"] = reserved_output
             # (69) total_tokens 可能还包含未分类用量，不能漏计或重复计算 reasoning 明细。
             if known:
+                # (69) 两个基础字段都有效，标明用量来自接口。
+                event["usage_source"] = "api_usage"
+                # (69) 输入 Token 不和其他明细重复相加。
+                event["input_tokens"] = usage["prompt_tokens"]
+                # (69) 输出 Token 单独保存。
+                event["output_tokens"] = usage["completion_tokens"]
                 # (69) 输入与输出之和是最小可信总量。
                 total = event["input_tokens"] + event["output_tokens"]
-                # (69) 服务端总量合法且更大时，把差额单独保存。
-                extra = usage["total_tokens"] - total if type(usage.get("total_tokens")) is int and usage["total_tokens"] > total else 0
+                # (69) 默认没有额外的未分类用量。
+                extra = 0
+                # (69) 读取服务端报告的总 Token 数。
+                reported_total = usage.get("total_tokens")
+                # (69) 只接受整数，且只补上大于输入输出之和的差额。
+                if type(reported_total) is int and reported_total > total:
+                    # (69) 差额单独保存，不能再加一遍整个服务端总量。
+                    extra = reported_total - total
                 # (69) 原始输入输出不变，未分类差额仍计入总量。
-                event.update({"uncategorized_tokens": extra, "total_tokens": total + extra})
+                event["uncategorized_tokens"] = extra
+                # (69) 总量等于输入、输出与额外差额之和。
+                event["total_tokens"] = total + extra
             # (69) 同一金额对预算可能含预留，对实际费用必须确认有 API usage。
             cost = self._money(estimated_cost)
             # (69) 明确区分预算扣账金额与依据已知用量估算的费用。
-            event.update({"budget_estimated_cost": cost, "estimated_cost": cost if known else None})
+            event["budget_estimated_cost"] = cost
+            # (69) 用量未知时，实际费用估算也标为未知。
+            event["estimated_cost"] = None
+            # (69) 只有用量已知时，才能把这笔金额计入已知费用。
+            if known:
+                # (69) 这里只存一次金额，汇总时不再向父节点重复记费。
+                event["estimated_cost"] = cost
         # (69) 每次结束追加一条新事件，不覆盖已有开始事件。
-        self.state.setdefault("trace_events", []).append(event)
+        events = self.state.setdefault("trace_events", [])
+        # (69) 将完成记录加入当前事件列表。
+        events.append(event)
 
     # (69) 只聚合当前轮结束事件，父子耗时分组展示但不能相加冒充总耗时。
     def summary(self) -> dict:
+        # (69) 先取出当前会话的安全编号。
+        thread_id = self._identifier(self.state.get("thread_id"))
+        # (69) 再取出当前问题的安全编号。
+        run_id = self._identifier(self.state.get("run_id"))
+        # (69) 先准备空列表，只收集属于本轮的完成事件。
+        events = []
         # (69) 限制同一 State 中残留的其他会话和其他轮次事件进入汇总。
-        events = [event for event in self.state.get("trace_events", []) if event.get("phase") == "end" and event.get("thread_id") == self._identifier(self.state.get("thread_id")) and event.get("run_id") == self._identifier(self.state.get("run_id"))]
-        # (69) 模型结束事件才是用量与费用的唯一统计来源。
-        calls = [event for event in events if event.get("kind") == "llm"]
-        # (69) 分开统计已知用量，未知用量不默认为零。
-        known = [event for event in calls if event.get("usage_source") == "api_usage"]
-        # (69) 已知金额可以汇总，但若存在未知调用，就不能声称费用完整。
-        known_costs = [event["estimated_cost"] for event in calls if event.get("estimated_cost") is not None]
-        # (69) 预算金额可能包含保守预留，单独汇总以免误认为实际消耗。
-        budget_costs = [event["budget_estimated_cost"] for event in calls if event.get("budget_estimated_cost") is not None]
-        # (69) 金额累加始终使用 Decimal，不使用 float。
-        cost_sum = str(sum((Decimal(cost) for cost in known_costs), Decimal("0")))
+        for event in self.state.get("trace_events", []):
+            # (69) 开始事件不参与汇总。
+            if event.get("phase") != "end":
+                # (69) 继续检查下一条事件。
+                continue
+            # (69) 其他会话的事件不参与本次统计。
+            if event.get("thread_id") != thread_id:
+                # (69) 保持会话之间的统计隔离。
+                continue
+            # (69) 同会话中的其他问题也不参与统计。
+            if event.get("run_id") != run_id:
+                # (69) 保持每一轮问题的成本独立。
+                continue
+            # (69) 三项检查都通过，收集当前完成事件。
+            events.append(event)
+        # (69) 模型尝试次数从零开始累计。
+        llm_attempts = 0
+        # (69) 单独统计有合法接口用量的模型调用数。
+        known_usage_calls = 0
+        # (69) 输入 Token 单独累计。
+        input_tokens = 0
+        # (69) 输出 Token 单独累计。
+        output_tokens = 0
+        # (69) 未分类 Token 单独累计。
+        uncategorized_tokens = 0
+        # (69) 这里只累计已知的总 Token，未知用量不当成零用量。
+        total_tokens = 0
+        # (69) 记录有已知费用的调用数，用于判断费用是否完整。
+        known_cost_calls = 0
+        # (69) 金额用 Decimal 累加，避免浮点误差。
+        cost_sum = Decimal("0")
+        # (69) 记录有预算金额的调用数。
+        budget_cost_calls = 0
+        # (69) 预算金额可能含预留，和已知费用分开累计。
+        budget_cost_sum = Decimal("0")
+        # (69) 按顺序检查每条本轮完成事件。
+        for event in events:
+            # (69) 只有实际模型调用参与 Token 和费用统计。
+            if event.get("kind") != "llm":
+                # (69) 跳过父节点和 Tool，避免重复记账。
+                continue
+            # (69) 失败和重试的模型调用也各算一次尝试。
+            llm_attempts += 1
+            # (69) 只有接口用量已知时，才累计实测 Token。
+            if event.get("usage_source") == "api_usage":
+                # (69) 这次调用的基础用量有效。
+                known_usage_calls += 1
+                # (69) 累计输入 Token。
+                input_tokens += event["input_tokens"]
+                # (69) 累计输出 Token。
+                output_tokens += event["output_tokens"]
+                # (69) 累计服务端报告的额外差额。
+                uncategorized_tokens += event["uncategorized_tokens"]
+                # (69) 总量已包含差额，不能再次添加明细。
+                total_tokens += event["total_tokens"]
+            # (69) 读取这次调用的已知费用估算。
+            cost = event.get("estimated_cost")
+            # (69) 未知金额不作为零金额参与已知费用统计。
+            if cost is not None:
+                # (69) 当前调用有已知费用。
+                known_cost_calls += 1
+                # (69) 把金额字符串转换成 Decimal 后累加。
+                cost_sum += Decimal(cost)
+            # (69) 读取可能包含保守预留的预算金额。
+            budget_cost = event.get("budget_estimated_cost")
+            # (69) 没有预算金额时，保留缺失状态。
+            if budget_cost is not None:
+                # (69) 当前调用有预算记账金额。
+                budget_cost_calls += 1
+                # (69) 预算金额单独求和。
+                budget_cost_sum += Decimal(budget_cost)
         # (69) 有任意缺失金额时，整个费用只能标记为部分已知。
-        partial = len(known_costs) != len(calls)
+        partial = known_cost_calls != llm_attempts
         # (69) 币种只接受常用三位代号，不回显任意配置文字。
         currency = self.state.get("limits", {}).get("currency", "UNKNOWN")
         # (69) 费用单位不做汇率换算，也不自动查询模型价格。
-        currency = currency if isinstance(currency, str) and re.fullmatch(r"[A-Z]{3}", currency) else "UNKNOWN"
+        if not isinstance(currency, str):
+            # (69) 非字符串不能作为币种。
+            currency = "UNKNOWN"
+        # (69) 字符串也必须符合三位大写字母格式。
+        elif not re.fullmatch(r"[A-Z]{3}", currency):
+            # (69) 不回显任意币种文字。
+            currency = "UNKNOWN"
+        # (69) 默认总费用未知。
+        estimated_cost = None
+        # (69) 每次模型调用的费用都已知时，总费用才完整。
+        if not partial:
+            # (69) State 中金额统一保存为字符串。
+            estimated_cost = str(cost_sum)
         # (69) 创建固定摘要结构，Console 可以直接展示这些统计字段。
-        result = {"thread_id": self._identifier(self.state.get("thread_id")), "run_id": self._identifier(self.state.get("run_id")), "currency": currency, "llm_attempts": len(calls), "known_input_tokens": sum(event["input_tokens"] for event in known), "known_output_tokens": sum(event["output_tokens"] for event in known), "known_uncategorized_tokens": sum(event["uncategorized_tokens"] for event in known), "known_total_tokens": sum(event["total_tokens"] for event in known), "unknown_usage_calls": len(calls) - len(known), "estimated_cost": None if partial else cost_sum, "known_estimated_cost": cost_sum, "cost_is_partial": partial, "budget_estimated_cost": str(sum((Decimal(cost) for cost in budget_costs), Decimal("0"))), "unknown_budget_cost_calls": len(calls) - len(budget_costs), "node_seconds": {}, "tool_seconds": {}}
-        # (69) 节点与工具各自按名称合计，不把嵌套时间重复加总。
-        for kind, target in (("node", "node_seconds"), ("tool", "tool_seconds")):
-            # (69) 开始事件、模型事件和缺失时间都不参与此处求和。
-            for event in events:
-                # (69) 同一工具多次调用会累计到同一名称。
-                if event.get("kind") == kind and type(event.get("duration_seconds")) in (int, float):
-                    # (69) 输出仍保持简单字典，便于 Debug 查看。
-                    result[target][event["name"]] = result[target].get(event["name"], 0.0) + event["duration_seconds"]
+        result = {
+            "thread_id": thread_id,
+            "run_id": run_id,
+            "currency": currency,
+            "llm_attempts": llm_attempts,
+            "known_input_tokens": input_tokens,
+            "known_output_tokens": output_tokens,
+            "known_uncategorized_tokens": uncategorized_tokens,
+            "known_total_tokens": total_tokens,
+            "unknown_usage_calls": llm_attempts - known_usage_calls,
+            "estimated_cost": estimated_cost,
+            "known_estimated_cost": str(cost_sum),
+            "cost_is_partial": partial,
+            "budget_estimated_cost": str(budget_cost_sum),
+            "unknown_budget_cost_calls": llm_attempts - budget_cost_calls,
+            "node_seconds": {},
+            "tool_seconds": {},
+        }
+        # (69) 节点与工具各自按名称累计耗时。
+        for event in events:
+            # (69) 先判断这条记录属于节点还是工具。
+            kind = event.get("kind")
+            # (69) 节点耗时写入节点统计字典。
+            if kind == "node":
+                # (69) 后面的累加会更新这个字典。
+                seconds_by_name = result["node_seconds"]
+            # (69) 工具耗时写入另一份字典。
+            elif kind == "tool":
+                # (69) 不把父节点时间与工具时间混在一起。
+                seconds_by_name = result["tool_seconds"]
+            # (69) 其他类型不参与按名称统计。
+            else:
+                # (69) 模型耗时等仍保留在原始事件中。
+                continue
+            # (69) 读取本次耗时。
+            duration = event.get("duration_seconds")
+            # (69) 未知耗时不能参与求和。
+            if type(duration) not in (int, float):
+                # (69) 跳过缺失或无效的耗时。
+                continue
+            # (69) 取出节点名或工具名。
+            name = event["name"]
+            # (69) 第一次出现这个名称时，已有耗时按零计算。
+            previous_seconds = seconds_by_name.get(name, 0.0)
+            # (69) 同一名称多次执行时，累计它们的耗时。
+            seconds_by_name[name] = previous_seconds + duration
         # (69) 摘要不返回参数、模型内容、工具结果或异常原文。
         return result

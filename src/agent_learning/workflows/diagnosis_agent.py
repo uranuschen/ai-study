@@ -10,7 +10,14 @@ from agent_learning.business.tools import DEFAULT_DATA_FILE, get_order, tool_res
 from agent_learning.core.models import SearchFilter
 from agent_learning.rag.answering import RAGPipeline
 from agent_learning.workflows import recovery_agent as recovery
-from agent_learning.workflows.human_approval_agent import APPROVAL_PROMPT, TOOL_SCHEMAS, ApprovalState, complete_tool_call, simulate_cancel_order, validate_approval
+from agent_learning.workflows.human_approval_agent import (
+    APPROVAL_PROMPT,
+    TOOL_SCHEMAS,
+    ApprovalState,
+    complete_tool_call,
+    simulate_cancel_order,
+    validate_approval,
+)
 from agent_learning.workflows.memory_agent import context_size, prepare_memory_node, trim_messages
 from agent_learning.workflows.run_execution import ExecutionStopped, RunExecution
 from agent_learning.workflows.tool_model import CompatibleToolModel
@@ -98,7 +105,15 @@ def choose_next_route(state: DiagnosisState) -> str:
         # (70) 仍延续模型选择工具、结果回传、模型总结的主循环。
         return "model"
     # (70) 敏感操作先准备审批，其他请求进入普通只读 Tool 节点。
-    return "prepare_approval" if state["pending_tool_calls"][0]["function"]["name"] == "cancel_order" else "tools"
+    next_call = state["pending_tool_calls"][0]
+    # (70) 先取出下一次请求的工具名称。
+    tool_name = next_call["function"]["name"]
+    # (70) 取消订单需要先准备人工审批。
+    if tool_name == "cancel_order":
+        # (70) 进入审批准备节点。
+        return "prepare_approval"
+    # (70) 其他工具走普通只读查询节点。
+    return "tools"
 
 
 # (70) 执行前检查工具次数、总时间，以及已产生的模型用量。
@@ -116,7 +131,15 @@ def check_tool_budget(state: dict, clock) -> str:
 
 
 # (70) 只读 Tool 保留原接口；RAG 仅增加共享执行对象参数。
-def dispatch_tool(name: str, arguments: str, tenant_id: str, pipeline: RAGPipeline, filters: SearchFilter, data_file: Path, execution: RunExecution) -> dict:
+def dispatch_tool(
+    name: str,
+    arguments: str,
+    tenant_id: str,
+    pipeline: RAGPipeline,
+    filters: SearchFilter,
+    data_file: Path,
+    execution: RunExecution,
+) -> dict:
     # (70) 三个业务函数仍由第 63 课的严格白名单分发与校验。
     if name in ("get_order", "get_payment", "get_refund"):
         # (70) 身份和本地 JSON 路径由可信程序绑定。
@@ -133,18 +156,37 @@ def dispatch_tool(name: str, arguments: str, tenant_id: str, pipeline: RAGPipeli
     except (ValueError, TypeError):
         # (70) 返回固定说明，不泄露原始参数。
         return tool_result(False, error="知识库参数必须是有效 JSON。")
-    # (70) 实际校验不能只依靠发给模型的 schema。
-    if not isinstance(parsed, dict) or set(parsed) != {"question"} or not isinstance(parsed["question"], str) or not parsed["question"].strip():
+    # (70) 先确认参数是字典，才能检查其中的字段。
+    if not isinstance(parsed, dict):
+        # (70) 非字典参数不能启动知识库查询。
+        return tool_result(False, error="知识库参数只允许非空字符串 question。")
+    # (70) 字典必须只有 question，不能夹带租户或权限字段。
+    if set(parsed) != {"question"}:
+        # (70) 缺少字段或多出字段都视为无效。
+        return tool_result(False, error="知识库参数只允许非空字符串 question。")
+    # (70) 取出待查询的问题。
+    question = parsed["question"]
+    # (70) 问题必须是非空字符串。
+    if not isinstance(question, str) or not question.strip():
         # (70) 坏参数不能启动检索或模型请求。
         return tool_result(False, error="知识库参数只允许非空字符串 question。")
     # (70) 原 RAG 检索、精排与引用校验保持不变；异常交给当前工作流分类。
-    result = pipeline.ask(parsed["question"].strip(), filters, execution=execution)
+    result = pipeline.ask(question.strip(), filters, execution=execution)
     # (70) 仍保留原始引用和资料不足状态，不把它们放进脱敏日志。
     return tool_result(True, data={"answer": result["answer"], "citations": result["citations"], "status": result["status"]})
 
 
 # (70) 模型节点保留整轮裁剪，实际请求由共享执行器检查预算与有限重试。
-def model_node(current: dict, model: CompatibleToolModel, trace: TraceRecorder, parent_id: str, max_history_turns: int, max_context_chars: int, clock, sleep) -> None:
+def model_node(
+    current: dict,
+    model: CompatibleToolModel,
+    trace: TraceRecorder,
+    parent_id: str,
+    max_history_turns: int,
+    max_context_chars: int,
+    clock,
+    sleep,
+) -> None:
     # (70) 新工具说明同样计入上下文字符数。
     current["messages"] = trim_messages(current["messages"], max_history_turns, max_context_chars, TOOL_SCHEMAS)
     # (70) 当前轮不能拆开，超预算时不发出残缺上下文。
@@ -171,17 +213,36 @@ def model_node(current: dict, model: CompatibleToolModel, trace: TraceRecorder, 
     # (70) 无工具请求时仍要求非空文字才能正常完成。
     current["answer"] = (message.get("content") or "").strip()
     # (70) 正常回答与空响应都结束，不无限循环。
-    current["stop_reason"] = "final_answer" if current["answer"] else "empty_response"
+    if current["answer"]:
+        # (70) 有回答时正常结束。
+        current["stop_reason"] = "final_answer"
+    # (70) 没有回答时记录空响应。
+    else:
+        # (70) 不再为这个空响应无限请求模型。
+        current["stop_reason"] = "empty_response"
 
 
 # (70) 每个节点只处理一个只读请求，成功后就保存进度再处理下一个。
-def tools_node(current: dict, pipeline: RAGPipeline, filters: SearchFilter, data_file: Path, trace: TraceRecorder, parent_id: str, clock, sleep) -> None:
+def tools_node(
+    current: dict,
+    pipeline: RAGPipeline,
+    filters: SearchFilter,
+    data_file: Path,
+    trace: TraceRecorder,
+    parent_id: str,
+    clock,
+    sleep,
+) -> None:
     # (70) 队首是这一次需要执行的工具。
     call = current["pending_tool_calls"][0]
     # (70) 工具名称只用于白名单分发，不作为任意代码执行。
     name = call["function"]["name"]
     # (69) 日志不回显模型生成的未知函数名。
-    safe_name = name if name in ("get_order", "get_payment", "get_refund", "ask_knowledge_base") else "unknown_tool"
+    safe_name = "unknown_tool"
+    # (69) 白名单中的名称才允许原样显示。
+    if name in ("get_order", "get_payment", "get_refund", "ask_knowledge_base"):
+        # (69) 这是程序已经认识的工具名称。
+        safe_name = name
     # (70) 只读调用的临时系统错误才可以有限重试。
     for retry_index in range(current["limits"]["max_retries"] + 1):
         # (70) 每次尝试前都检查总 Tool 次数与已消耗预算。
@@ -195,9 +256,18 @@ def tools_node(current: dict, pipeline: RAGPipeline, filters: SearchFilter, data
         # (70) 每次真实分发都计数，参数失败也占一次。
         current["tool_calls"] += 1
         # (70) 只有实际开始额外尝试才计重试。
-        current["tool_retries"] += int(retry_index > 0)
+        if retry_index > 0:
+            # (70) 第一次调用不算重试，后续尝试各加一次。
+            current["tool_retries"] += 1
         # (69) Tool 与内部 RAG / LLM 子跨度属于同一轮执行。
-        span = trace.start("tool", safe_name, parent_id=parent_id, attempt=current["tool_calls"], retry=retry_index, tool_call_id=call["id"])
+        span = trace.start(
+            "tool",
+            safe_name,
+            parent_id=parent_id,
+            attempt=current["tool_calls"],
+            retry=retry_index,
+            tool_call_id=call["id"],
+        )
         # (69) 只保存已脱敏参数摘要，不保留完整问题或订单号。
         current["trace_events"][-1]["arguments"] = safe_arguments(safe_name, call["function"]["arguments"])
         # (70) 该执行器让 RAG 内部模型也累计到本轮预算。
@@ -207,9 +277,25 @@ def tools_node(current: dict, pipeline: RAGPipeline, filters: SearchFilter, data
         # (70) 所有真实调用都留在这一明确的错误边界内。
         try:
             # (70) 业务函数、混合检索与精排都沿用之前的实现。
-            result = dispatch_tool(name, call["function"]["arguments"], current["tenant_id"], pipeline, filters, data_file, execution)
-            # (70) 错误返回结构不能冒充正常业务数据。
-            if not isinstance(result, dict) or set(result) != {"success", "data", "error"} or type(result["success"]) is not bool:
+            result = dispatch_tool(
+                name,
+                call["function"]["arguments"],
+                current["tenant_id"],
+                pipeline,
+                filters,
+                data_file,
+                execution,
+            )
+            # (70) Tool 返回值必须是字典。
+            if not isinstance(result, dict):
+                # (70) 协议错误不能冒充正常业务结果。
+                raise ValueError("Tool 返回格式无效。")
+            # (70) 返回字典必须恰好包含三个规定字段。
+            if set(result) != {"success", "data", "error"}:
+                # (70) 字段缺失或多余都表示协议错误。
+                raise ValueError("Tool 返回格式无效。")
+            # (70) success 必须是布尔值。
+            if type(result["success"]) is not bool:
                 # (70) 协议错误不是可自动恢复的临时故障。
                 raise ValueError("Tool 返回格式无效。")
         # (70) RAG 内层预算或重试停止不能被 Tool 层再次整体重试。
@@ -224,14 +310,32 @@ def tools_node(current: dict, pipeline: RAGPipeline, filters: SearchFilter, data
             error = caught
             # (70) 给模型与 Console 的结果使用固定安全说明。
             result = tool_result(False, error="Tool 系统异常，未确认查询结果。")
+        # (69) 默认工具调用成功。
+        status = "success"
+        # (69) 系统异常和正常返回的业务失败分开记录。
+        if error:
+            # (69) 系统异常只保存安全类别。
+            status = "error"
+        # (69) 没抛异常，但业务函数明确返回失败。
+        elif not result["success"]:
+            # (69) 例如订单不存在，属于业务失败。
+            status = "business_failure"
         # (69) 失败分类、调用 ID 摘要与耗时帮助定位，但不存完整 Tool 结果。
-        trace.finish(span, "error" if error else "success" if result["success"] else "business_failure", error=error)
-        # (70) 时间关闭时只记录耗时；开启后也不声称终止了远端任务。
-        reason = "overall_timeout" if recovery.overall_timeout_reached(current, clock) else ""
+        trace.finish(span, status, error=error)
+        # (70) 默认没有超时停止原因。
+        reason = ""
+        # (70) 时间限制关闭时，这个检查不会因 Debug 停顿失败。
+        if recovery.overall_timeout_reached(current, clock):
+            # (70) 开启时间限制且整体超时，停止后续执行。
+            reason = "overall_timeout"
         # (70) 同步本地工具只能在返回后检查单次耗时。
-        if not reason and current["limits"]["enable_timeouts"] and clock() - span["started_at"] >= current["limits"]["tool_timeout"]:
-            # (70) 超时后停止后续调度，不自动重放当前调用。
-            reason = "tool_timeout"
+        if not reason and current["limits"]["enable_timeouts"]:
+            # (70) 先算出本次工具调用用了多少秒。
+            elapsed = clock() - span["started_at"]
+            # (70) 超过单次工具时间限制时停止。
+            if elapsed >= current["limits"]["tool_timeout"]:
+                # (70) 不自动重放当前调用。
+                reason = "tool_timeout"
         # (70) 内层受控停止已经设置预算或错误原因。
         reason = reason or current["stop_reason"]
         # (70) 无系统异常时，业务成功和业务失败都不重试。
@@ -239,7 +343,11 @@ def tools_node(current: dict, pipeline: RAGPipeline, filters: SearchFilter, data
             # (70) 原始成功空列表保留，不误报查询失败。
             current.update(complete_tool_call(current, result))
             # (70) 业务失败直接进入失败分支，不交给模型无限修正。
-            current["stop_reason"] = reason or ("" if result["success"] else "business_error")
+            current["stop_reason"] = reason
+            # (70) 没有其他停止原因时，业务失败使用固定原因。
+            if not reason and not result["success"]:
+                # (70) 业务失败不再交给模型反复修正。
+                current["stop_reason"] = "business_error"
             # (70) 当前调用已经配齐，剩余批次由后续节点处理或跳过。
             return
         # (70) 已发生预算停止或不可重试错误时，不继续等待。
@@ -270,8 +378,14 @@ def tools_node(current: dict, pipeline: RAGPipeline, filters: SearchFilter, data
         wait_span = trace.start("node", "tool_retry_wait", parent_id=parent_id, retry=retry_index + 1)
         # (70) 沿用原 Retry-After 和有限等待规则。
         can_retry = recovery.wait_to_retry(current, error, retry_index, clock, sleep, "tool")
+        # (69) 默认等待被允许。
+        wait_status = "success"
+        # (69) 等待预算不足时记录失败。
+        if not can_retry:
+            # (69) 后面会保存已有失败结果并结束。
+            wait_status = "error"
         # (69) 状态只表示等待是否允许，不泄露原始错误。
-        trace.finish(wait_span, "success" if can_retry else "error")
+        trace.finish(wait_span, wait_status)
         # (70) 等待限制不足时保存本次失败后结束。
         if not can_retry:
             # (70) complete_tool_call 默认返回空结束原因，先保留原控制原因。
@@ -285,11 +399,19 @@ def tools_node(current: dict, pipeline: RAGPipeline, filters: SearchFilter, data
 
 
 # (70) 审批准备是独立节点，确认目标和等待跨度在暂停前先存档。
-def prepare_approval_node(current: dict, data_file: Path, trace: TraceRecorder, clock, parent_id: str = "") -> None:
+def prepare_approval_node(
+    current: dict,
+    data_file: Path,
+    trace: TraceRecorder,
+    clock,
+    parent_id: str = "",
+) -> None:
     # (70) 每次只为队首取消请求生成审批信息。
     call = current["pending_tool_calls"][0]
     # (70) 清空本次审批字段，不沿用上一个操作的批准。
-    current["approval_request"], current["approval_decision"] = {}, {}
+    current["approval_request"] = {}
+    # (70) 同时清空旧的审批决定。
+    current["approval_decision"] = {}
     # (70) 预算已不足时不要求人批准不会执行的请求。
     reason = check_tool_budget(current, clock)
     # (70) 未执行操作不增加 Tool 次数。
@@ -308,14 +430,28 @@ def prepare_approval_node(current: dict, data_file: Path, trace: TraceRecorder, 
         current["stop_reason"] = "business_error"
         # (70) 当前未执行操作由 finish 标记未执行。
         return
-    # (70) 实际参数还要做严格结构与类型校验。
-    if not isinstance(arguments, dict) or set(arguments) != {"order_id"} or not isinstance(arguments["order_id"], str) or not arguments["order_id"].strip():
+    # (70) 参数必须先是字典。
+    if not isinstance(arguments, dict):
+        # (70) 参数无效，不准备审批请求。
+        current["stop_reason"] = "business_error"
+        # (70) 交给统一失败节点收尾。
+        return
+    # (70) 字典中只能有 order_id 这一个字段。
+    if set(arguments) != {"order_id"}:
+        # (70) 模型不能通过额外字段指定租户或审批决定。
+        current["stop_reason"] = "business_error"
+        # (70) 不进入审批。
+        return
+    # (70) 取出待审批的订单号。
+    order_id = arguments["order_id"]
+    # (70) 订单号必须是非空字符串。
+    if not isinstance(order_id, str) or not order_id.strip():
         # (70) 参数失败不是临时系统故障。
         current["stop_reason"] = "business_error"
         # (70) 不进入审批。
         return
     # (70) 只读检查实际订单，租户始终来自可信 State。
-    order_result = get_order(arguments["order_id"], current["tenant_id"], data_file)
+    order_result = get_order(order_id, current["tenant_id"], data_file)
     # (70) 不存在或不可读取的订单不支持取消。
     if not order_result["success"]:
         # (70) 配齐当前调用但不模拟执行。
@@ -331,11 +467,23 @@ def prepare_approval_node(current: dict, data_file: Path, trace: TraceRecorder, 
         # (70) 重复请求仍算一次 Tool 处理，避免大量重复调用绕过总次数限制。
         current["tool_calls"] += 1
         # (69) 明确记录跳过执行，而不是伪造又执行了一次模拟取消。
-        span = trace.start("tool", "cancel_order", parent_id=parent_id, attempt=current["tool_calls"], tool_call_id=call["id"])
+        span = trace.start(
+            "tool",
+            "cancel_order",
+            parent_id=parent_id,
+            attempt=current["tool_calls"],
+            tool_call_id=call["id"],
+        )
         # (69) 原始参数留在业务 State，日志只保留遮盖后的订单摘要。
         current["trace_events"][-1]["arguments"] = safe_arguments("cancel_order", call["function"]["arguments"])
         # (70) 模拟记录不代表原始 JSON 已取消。
-        result = tool_result(True, data={"order_id": order["order_id"], "status": "本会话已模拟取消", "simulated": True, "duplicate": True, "note": "未重复执行；原始 JSON 未修改。"})
+        result = tool_result(True, data={
+            "order_id": order["order_id"],
+            "status": "本会话已模拟取消",
+            "simulated": True,
+            "duplicate": True,
+            "note": "未重复执行；原始 JSON 未修改。",
+        })
         # (70) 当前请求完成后由路由决定下一个工具或模型总结。
         current.update(complete_tool_call(current, result))
         # (69) Tool 已处理但敏感动作未重做。
@@ -351,7 +499,14 @@ def prepare_approval_node(current: dict, data_file: Path, trace: TraceRecorder, 
         # (70) 后续批次不再执行。
         return
     # (70) 沿用原目标字段并绑定本轮 run_id，防止相同调用 ID 下的旧批准跨轮重放。
-    current["approval_request"] = {"action": "cancel_order", "order_id": order["order_id"], "tenant_id": current["tenant_id"], "tool_call_id": call["id"], "mode": "simulate", "run_id": current["run_id"]}
+    current["approval_request"] = {
+        "action": "cancel_order",
+        "order_id": order["order_id"],
+        "tenant_id": current["tenant_id"],
+        "tool_call_id": call["id"],
+        "mode": "simulate",
+        "run_id": current["run_id"],
+    }
     # (69) 跨暂停保存审批节点的跨度，耗时包括人工等待。
     current["approval_span"] = trace.start("node", "approval", parent_id=current["run_span"]["span_id"])
 
@@ -401,7 +556,15 @@ def execute_cancel_node(current: dict, data_file: Path, trace: TraceRecorder, pa
         # (70) 未执行请求由 finish 配对。
         return
     # (70) 只有绑定当前目标的有效确认才能到达模拟函数。
-    if not validate_approval(current["approval_decision"], current["approval_request"]) or current["approval_decision"]["decision"] != "approve":
+    approval_valid = validate_approval(current["approval_decision"], current["approval_request"])
+    # (70) 先检查参数与目标是否绑定，避免读取无效决定。
+    if not approval_valid:
+        # (70) 不接受手动拼出的无效 State。
+        current["stop_reason"] = "approval_invalid"
+        # (70) 不执行业务函数。
+        return
+    # (70) 有效决定也必须明确表示批准。
+    if current["approval_decision"]["decision"] != "approve":
         # (70) 不接受手动拼出的无效 State。
         current["stop_reason"] = "approval_invalid"
         # (70) 不执行业务函数。
@@ -419,9 +582,19 @@ def execute_cancel_node(current: dict, data_file: Path, trace: TraceRecorder, pa
     # (70) 只有真正开始执行才增加敏感 Tool 次数。
     current["tool_calls"] += 1
     # (69) 操作结果不记录进日志，日志仅保留状态、次数与耗时。
-    span = trace.start("tool", "cancel_order", parent_id=parent_id, attempt=current["tool_calls"], tool_call_id=current["approval_request"]["tool_call_id"])
+    span = trace.start(
+        "tool",
+        "cancel_order",
+        parent_id=parent_id,
+        attempt=current["tool_calls"],
+        tool_call_id=current["approval_request"]["tool_call_id"],
+    )
     # (69) 取消操作也使用同一参数脱敏规则，不输出完整订单号。
-    current["trace_events"][-1]["arguments"] = safe_arguments("cancel_order", json.dumps({"order_id": current["approval_request"]["order_id"]}))
+    arguments = {"order_id": current["approval_request"]["order_id"]}
+    # (69) 先生成工具参数 JSON，再交给脱敏函数。
+    arguments_json = json.dumps(arguments)
+    # (69) 日志只保存脱敏后的摘要。
+    current["trace_events"][-1]["arguments"] = safe_arguments("cancel_order", arguments_json)
     # (70) 敏感执行异常不能沿用只读操作的自动重试。
     try:
         # (70) 直接使用第 67 课模拟函数，不写 JSON、数据库或外部接口。
@@ -443,17 +616,34 @@ def execute_cancel_node(current: dict, data_file: Path, trace: TraceRecorder, pa
     # (70) 同会话保存简单防重复记录，不宣称生产写操作 exactly-once。
     current["simulated_cancellations"] = current["simulated_cancellations"] + [order_result["data"]["order_id"]]
     # (70) 批准只能用于当前操作，不沿用到后续工具。
-    current["approval_request"], current["approval_decision"] = {}, {}
+    current["approval_request"] = {}
+    # (70) 同时清空本次决定。
+    current["approval_decision"] = {}
 
 
 # (70) 把已有 Memory、RAG、恢复、预算与人工确认编排到同一张图。
-def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: SearchFilter, checkpointer: InMemorySaver, data_file: Path = DEFAULT_DATA_FILE, limits=None, max_history_turns: int = 2, max_context_chars: int = 12000, clock=time.monotonic, sleep=time.sleep):
+def build_graph(
+    model: CompatibleToolModel,
+    pipeline: RAGPipeline,
+    filters: SearchFilter,
+    checkpointer: InMemorySaver,
+    data_file: Path = DEFAULT_DATA_FILE,
+    limits=None,
+    max_history_turns: int = 2,
+    max_context_chars: int = 12000,
+    clock=time.monotonic,
+    sleep=time.sleep,
+):
     # (70) 保持之前课程的可信资料范围。
     if filters.doc_type not in ("policy", "process", "faq"):
         # (70) 不让订单资料快照代替当前业务事实。
         raise ValueError("知识库资料类型只能是 policy、process 或 faq。")
-    # (70) 两个简单 Memory 参数不接受负数或空预算。
-    if type(max_history_turns) is not int or max_history_turns < 0 or type(max_context_chars) is not int or max_context_chars < 1:
+    # (70) 历史轮数必须是非负整数。
+    if type(max_history_turns) is not int or max_history_turns < 0:
+        # (70) 无效配置在模型请求前提示。
+        raise ValueError("历史轮数必须非负，上下文字符预算必须为正。")
+    # (70) 上下文字符预算必须是正整数。
+    if type(max_context_chars) is not int or max_context_chars < 1:
         # (70) 无效配置在模型请求前提示。
         raise ValueError("历史轮数必须非负，上下文字符预算必须为正。")
     # (70) 只有显式要求才启用时间限制，默认 Debug 不因暂停超时。
@@ -461,8 +651,14 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
     if limits is not None and not isinstance(limits, dict):
         # (70) 不在启动模型后才发现配置错误。
         raise ValueError("预算覆盖参数必须是字典。")
-    # (70) 新课只改变默认时间开关，不修改旧课默认配置。
-    trusted_limits = recovery.make_limits({"enable_timeouts": False, **({} if limits is None else limits)})
+    # (70) 本课默认关闭时间限制，便于逐步 Debug。
+    limit_settings = {"enable_timeouts": False}
+    # (70) 调用方提供了预算配置时，覆盖本课默认值。
+    if limits is not None:
+        # (70) 配置来自可信入口，不从用户问题中提取。
+        limit_settings.update(limits)
+    # (70) 继续使用原来的预算检查函数。
+    trusted_limits = recovery.make_limits(limit_settings)
 
     # (70) 新问题开始时初始化预算；Command 恢复不会重新进入这个节点。
     def run_prepare(state: DiagnosisState, config: RunnableConfig) -> dict:
@@ -473,7 +669,9 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
         # (69) 新问题生成新编号，Command 恢复不会执行这里。
         current["run_id"] = uuid4().hex
         # (69) 本轮日志与上一轮分开，不清空会话历史。
-        current["trace_events"], current["trace_summary"] = [], {}
+        current["trace_events"] = []
+        # (69) 清空上一轮汇总，当前轮结束时再生成。
+        current["trace_summary"] = {}
         # (69) 所有普通节点仍使用同一个整轮父跨度。
         trace = TraceRecorder(current, clock)
         # (69) 总跨度从 prepare 的实际工作之前开始。
@@ -487,7 +685,11 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
         # (70) 新问题不清空同会话已经模拟过的订单号。
         current["simulated_cancellations"] = list(state.get("simulated_cancellations", []))
         # (70) 上一轮批准不能用于本轮新请求。
-        current["approval_request"], current["approval_decision"], current["approval_span"] = {}, {}, {}
+        current["approval_request"] = {}
+        # (70) 同时清空上一轮的审批决定。
+        current["approval_decision"] = {}
+        # (69) 本轮需要审批时，再建立新的等待跨度。
+        current["approval_span"] = {}
         # (70) 输入校验成功后才补充综合流程与审批规则。
         if not current["stop_reason"]:
             # (70) 不重写原业务事实与 RAG 引用边界。
@@ -495,7 +697,13 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
             # (70) 补充规则后按实际工具说明再检查完整轮次。
             current["messages"] = trim_messages(current["messages"], max_history_turns, max_context_chars, TOOL_SCHEMAS)
         # (69) 只记录校验状态，不记录用户问题或可信过滤器全文。
-        trace.finish(span, "error" if current["stop_reason"] else "success")
+        status = "success"
+        # (69) 准备过程中已经产生停止原因，说明校验未通过。
+        if current["stop_reason"]:
+            # (69) 日志只保存失败状态。
+            status = "error"
+        # (69) 结束 prepare 节点的耗时记录。
+        trace.finish(span, status)
         # (70) LangGraph 保存新问题的共享 State。
         return current
 
@@ -510,7 +718,11 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
         # (70) 普通函数显式绑定需要的依赖，不使用反射或装饰器。
         operation(current, trace, span["span_id"])
         # (69) final_answer 是正常完成，预算或系统失败有独立结束状态。
-        status = "success" if not current["stop_reason"] or current["stop_reason"] == "final_answer" else current["stop_reason"]
+        status = "success"
+        # (69) 有停止原因且不是正常回答时，使用具体原因作为状态。
+        if current["stop_reason"] and current["stop_reason"] != "final_answer":
+            # (69) 便于区分预算耗尽、业务失败与系统错误。
+            status = current["stop_reason"]
         # (69) 节点不重复记录其内部 LLM 用量。
         trace.finish(span, status)
         # (70) 保留该节点已经完成的队列、预算与追踪进度。
@@ -561,14 +773,20 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
     def run_failure(state: DiagnosisState) -> dict:
         # (70) 执行失败分支仍然保留此前的业务结果和引用。
         def operation(current, trace, parent_id):
-            # (70) 失败模板不能把外部 Tool error 自由文本直接拼到 Console。
-            safe_state = {**current, "tool_results": []}
+            # (70) 先复制当前状态，保留原来的业务证据。
+            safe_state = dict(current)
+            # (70) 失败模板不读取原始 Tool 错误文本，避免直接拼到 Console。
+            safe_state["tool_results"] = []
             # (70) 原有预算、超时与重试原因继续使用既有说明。
             current.update(recovery.failure_node(safe_state))
             # (70) 为综合课程补充两种明确的结束原因。
-            if current["stop_reason"] in ("context_budget", "approval_invalid"):
-                # (70) 只输出程序固定文字，不输出无效参数本身。
-                current["answer"] = "上下文预算不足，本轮结束。" if current["stop_reason"] == "context_budget" else "审批参数无效，未执行模拟取消。"
+            if current["stop_reason"] == "context_budget":
+                # (70) 上下文超限时不额外请求模型解释。
+                current["answer"] = "上下文预算不足，本轮结束。"
+            # (70) 审批失败使用独立说明。
+            elif current["stop_reason"] == "approval_invalid":
+                # (70) 不输出无效参数本身。
+                current["answer"] = "审批参数无效，未执行模拟取消。"
             # (70) 敏感执行异常不能说成确定没有执行，也不能自动重试。
             if current["stop_reason"] == "action_error":
                 # (70) 保留结果不确定的边界，实际演示仍只模拟、不写业务数据。
@@ -600,12 +818,20 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
             # (70) 由统一失败节点解释。
             return "failure"
         # (70) 只有实际生成新请求时才等待人工输入。
-        return "approval" if state["approval_request"] else choose_next_route(state)
+        if state["approval_request"]:
+            # (70) 有新的审批请求，进入人工等待。
+            return "approval"
+        # (70) 没有新请求，继续原来的工具或结束路由。
+        return choose_next_route(state)
 
     # (70) 有效确认才去执行节点，拒绝或无效参数按原结束原因收尾。
     def choose_approved_route(state: DiagnosisState) -> str:
         # (70) 不将人工确认当成一次新的模型决策。
-        return "execute_cancel" if not state["stop_reason"] else choose_next_route(state)
+        if not state["stop_reason"]:
+            # (70) 批准有效且没有失败，进入模拟执行。
+            return "execute_cancel"
+        # (70) 拒绝或参数无效，交给原路由收尾。
+        return choose_next_route(state)
 
     # (70) 共享 State 包含业务、Memory、预算、审批与脱敏追踪信息。
     graph = StateGraph(DiagnosisState)
@@ -632,11 +858,28 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
     # (70) 模型、普通工具和敏感执行共用按 State 判断的条件边。
     for node in ("model", "tools", "execute_cancel"):
         # (70) 最终回答、失败、普通 Tool 和新审批分别路由。
-        graph.add_conditional_edges(node, choose_next_route, {"model": "model", "tools": "tools", "prepare_approval": "prepare_approval", "failure": "failure", "finish": "finish"})
+        graph.add_conditional_edges(node, choose_next_route, {
+            "model": "model",
+            "tools": "tools",
+            "prepare_approval": "prepare_approval",
+            "failure": "failure",
+            "finish": "finish",
+        })
     # (70) 准备节点已经单独提交，下一次恢复不再重做。
-    graph.add_conditional_edges("prepare_approval", choose_approval_route, {"approval": "approval", "model": "model", "tools": "tools", "prepare_approval": "prepare_approval", "failure": "failure", "finish": "finish"})
+    graph.add_conditional_edges("prepare_approval", choose_approval_route, {
+        "approval": "approval",
+        "model": "model",
+        "tools": "tools",
+        "prepare_approval": "prepare_approval",
+        "failure": "failure",
+        "finish": "finish",
+    })
     # (70) 只有有效批准才能走执行节点，拒绝和无效参数分别收尾。
-    graph.add_conditional_edges("approval", choose_approved_route, {"execute_cancel": "execute_cancel", "failure": "failure", "finish": "finish"})
+    graph.add_conditional_edges("approval", choose_approved_route, {
+        "execute_cancel": "execute_cancel",
+        "failure": "failure",
+        "finish": "finish",
+    })
     # (70) 失败也要配齐 Tool 消息，不留半套协议到下一轮。
     graph.add_edge("failure", "finish")
     # (70) 到 END 后不会自动回到模型或重试。
@@ -644,4 +887,6 @@ def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: Sear
     # (70) 调度次数与模型次数不同，留出工具、审批与失败分支的余量。
     recursion_limit = 4 * trusted_limits["max_steps"] + 4 * trusted_limits["max_tool_calls"] + 20
     # (70) 继续使用已有内存 Checkpointer，不连接数据库存档器。
-    return graph.compile(checkpointer=checkpointer).with_config({"recursion_limit": recursion_limit})
+    compiled_graph = graph.compile(checkpointer=checkpointer)
+    # (70) 给编译后的图设置调度次数上限。
+    return compiled_graph.with_config({"recursion_limit": recursion_limit})

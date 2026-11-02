@@ -82,7 +82,12 @@ def resume_approvals(graph: CompiledStateGraph, result: dict, config: dict) -> d
         # (69) 暂停时只展示截至当前的汇总，避免恢复后重复输出同一条完成事件。
         show_trace(result, details=False)
         # (70) 仅展示人工必须确认的目标；不显示模型自由生成的调用 ID。
-        visible = {key: request[key] for key in ("action", "order_id", "tenant_id", "mode")}
+        visible = {
+            "action": request["action"],
+            "order_id": request["order_id"],
+            "tenant_id": request["tenant_id"],
+            "mode": request["mode"],
+        }
         # (70) 这是人工审批界面，不是包含完整请求的运行日志。
         print("等待人工审批：", json.dumps(visible, ensure_ascii=False))
         # (70) 没有明确决定就继续等输入，空值不能默认批准。
@@ -101,8 +106,14 @@ def resume_approvals(graph: CompiledStateGraph, result: dict, config: dict) -> d
                 break
             # (70) 审批时不能切换 thread_id 或覆盖当前问题。
             print("请输入 y/approve 或 n/reject；待审批时不能切换会话。")
-        # (70) 决定与操作、订单、租户和原调用 ID 绑定。
-        decision = {**request, "decision": "approve" if choice in ("y", "approve") else "reject"}
+        # (70) 复制原审批请求，让决定仍绑定原来的操作和目标。
+        decision = dict(request)
+        # (70) 默认拒绝，只有明确确认时才批准。
+        decision["decision"] = "reject"
+        # (70) 两种确认输入都表示人工批准。
+        if choice in ("y", "approve"):
+            # (70) 在原请求中补上人工决定。
+            decision["decision"] = "approve"
         # (70) 恢复保留同一 run_id、预算与会话，不重新执行 prepare。
         result = graph.invoke(Command(resume=decision), config=config)
     # (70) 没有新的动态暂停时，交回最终 State。
@@ -134,13 +145,32 @@ def main():
     # (70) 内存存档保留图进度与会话历史，退出进程后丢失。
     checkpointer = InMemorySaver()
     # (70) 原第 63 课预算函数检查这些可信配置。
-    limits = {"max_steps": MAX_STEPS, "max_tool_calls": MAX_TOOL_CALLS, "max_retries": MAX_RETRIES, "max_total_tokens": MAX_TOTAL_TOKENS, "max_cost": MAX_COST, "input_price_per_million": INPUT_PRICE_PER_MILLION, "output_price_per_million": OUTPUT_PRICE_PER_MILLION, "currency": "CNY", "enable_timeouts": ENABLE_TIMEOUTS}
+    limits = {
+        "max_steps": MAX_STEPS,
+        "max_tool_calls": MAX_TOOL_CALLS,
+        "max_retries": MAX_RETRIES,
+        "max_total_tokens": MAX_TOTAL_TOKENS,
+        "max_cost": MAX_COST,
+        "input_price_per_million": INPUT_PRICE_PER_MILLION,
+        "output_price_per_million": OUTPUT_PRICE_PER_MILLION,
+        "currency": "CNY",
+        "enable_timeouts": ENABLE_TIMEOUTS,
+    }
     # (69) 本机模型不计在线 API 费用，不估算硬件成本。
     if USE_OLLAMA:
         # (69) 零单价仍保留实际接口报告的 Token。
         limits.update({"input_price_per_million": "0", "output_price_per_million": "0"})
     # (70) 业务、RAG、会话、恢复、预算和审批编译为同一张图。
-    graph = build_graph(model, pipeline, filters, checkpointer, data_file=DATA_FILE, limits=limits, max_history_turns=MAX_HISTORY_TURNS, max_context_chars=MAX_CONTEXT_CHARS)
+    graph = build_graph(
+        model,
+        pipeline,
+        filters,
+        checkpointer,
+        data_file=DATA_FILE,
+        limits=limits,
+        max_history_turns=MAX_HISTORY_TURNS,
+        max_context_chars=MAX_CONTEXT_CHARS,
+    )
     # (70) 固定配置结构，相同 thread_id 对应同一份会话存档。
     config = {"configurable": {"thread_id": THREAD_ID}}
     # (70) 新会话只换编号，不删除旧存档。

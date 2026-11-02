@@ -14,7 +14,14 @@ class ExecutionStopped(RuntimeError):
 # (70) 一次节点执行使用一个普通对象，绑定同一轮预算与追踪记录。
 class RunExecution:
     # (70) 依赖显式传入，不将运行信息存进全局变量或模型对象。
-    def __init__(self, state: dict, trace: TraceRecorder, parent_id: str = "", clock=time.monotonic, sleep=time.sleep):
+    def __init__(
+        self,
+        state: dict,
+        trace: TraceRecorder,
+        parent_id: str = "",
+        clock=time.monotonic,
+        sleep=time.sleep,
+    ):
         # (70) 外层模型、RAG 内层模型共同更新这一轮的 State 副本。
         self.state = state
         # (69) 事件写入当前 run_id 对应的记录列表。
@@ -22,7 +29,9 @@ class RunExecution:
         # (69) 父节点或父 Tool 的 span_id 用于串联调用关系。
         self.parent_id = parent_id
         # (70) 离线测试可以注入虚拟时钟和等待函数。
-        self.clock, self.sleep = clock, sleep
+        self.clock = clock
+        # (70) 重试等待也可以使用测试提供的函数。
+        self.sleep = sleep
         # (69) RAG 步骤只在本次调用中使用，不跨线程共享。
         self.rag_stage = None
 
@@ -37,8 +46,14 @@ class RunExecution:
     def finish_stage(self, error: Exception | None = None) -> None:
         # (69) 无活动步骤时不生成重复记录。
         if self.rag_stage is not None:
+            # (69) 默认当前步骤成功。
+            status = "success"
+            # (69) 有异常时改为失败状态。
+            if error:
+                # (69) 只记录固定状态。
+                status = "error"
             # (69) 步骤耗时与内部 LLM 耗时有包含关系，不能直接相加。
-            self.trace.finish(self.rag_stage, "error" if error else "success", error=error)
+            self.trace.finish(self.rag_stage, status, error=error)
             # (69) 一个步骤只结束一次。
             self.rag_stage = None
 
@@ -52,7 +67,11 @@ class RunExecution:
     # (70) 每次实际 LLM 尝试都检查同一份预算，内外层调用采用相同规则。
     def request(self, model, messages: list, tools: list | None = None):
         # (69) 只记录固定作用域名称，不记录模型问题或返回正文。
-        scope = "agent_model" if tools is not None else "rag_model"
+        scope = "rag_model"
+        # (69) 提供了工具说明，表示这是外层 Agent 的模型请求。
+        if tools is not None:
+            # (69) 与 RAG 内层生成区分开。
+            scope = "agent_model"
         # (70) 有限循环只负责当前模型决策的临时系统错误。
         for retry_index in range(self.state["limits"]["max_retries"] + 1):
             # (70) 输入预留包含实际消息和本次工具说明，不冒充精确分词。
@@ -74,19 +93,40 @@ class RunExecution:
             # (70) 每次真正尝试均计数，包括失败和 RAG 内层请求。
             self.state["model_steps"] += 1
             # (70) 只有真正启动额外尝试才记一次重试。
-            self.state["model_retries"] += int(retry_index > 0)
-            # (69) 内层 LLM 挂在当前 RAG 步骤下，外层挂在模型节点下。
-            parent_id = self.rag_stage["span_id"] if self.rag_stage is not None else self.parent_id
+            if retry_index > 0:
+                # (70) 第一次请求不算重试，后续尝试各加一次。
+                self.state["model_retries"] += 1
+            # (69) 外层模型默认挂在当前模型节点下。
+            parent_id = self.parent_id
+            # (69) RAG 内层模型改为挂在当前检索生成步骤下。
+            if self.rag_stage is not None:
+                # (69) 通过父跨度编号关联当前 RAG 步骤。
+                parent_id = self.rag_stage["span_id"]
             # (69) 一次实际请求只产生一条完成用量记录。
-            span = self.trace.start("llm", scope, parent_id=parent_id, attempt=self.state["model_steps"], retry=retry_index)
+            span = self.trace.start(
+                "llm",
+                scope,
+                parent_id=parent_id,
+                attempt=self.state["model_steps"],
+                retry=retry_index,
+            )
             # (70) 请求异常时用量未知，由预算函数使用保守预留。
-            usage, error, value = {}, None, None
+            usage = {}
+            # (70) 请求前还没有异常。
+            error = None
+            # (70) 请求前还没有有效返回值。
+            value = None
             # (70) 这里只包住模型请求与协议校验，不包住 interrupt。
             try:
                 # (70) 外层使用原 Tool Calling 适配，不重写接口协议。
                 if tools is not None:
                     # (70) SDK 内部重试原本就是零，预算直接控制每次实际请求。
-                    response = model.request_with_tools(messages, tools, timeout=timeout, max_tokens=self.state["limits"]["max_output_tokens"])
+                    response = model.request_with_tools(
+                        messages,
+                        tools,
+                        timeout=timeout,
+                        max_tokens=self.state["limits"]["max_output_tokens"],
+                    )
                     # (69) 即使响应被截断，也先保留接口报告的用量。
                     usage = response.get("usage", {})
                     # (70) 不执行半截工具调用或未知结束类型。
@@ -104,7 +144,12 @@ class RunExecution:
                 # (70) RAG 内层沿用原客户端，只读取完整响应与用量。
                 else:
                     # (70) 关闭 SDK 隐藏重试，和外层共享总请求预算。
-                    response = model.request(messages, timeout=timeout, max_tokens=self.state["limits"]["max_output_tokens"], max_retries=0)
+                    response = model.request(
+                        messages,
+                        timeout=timeout,
+                        max_tokens=self.state["limits"]["max_output_tokens"],
+                        max_retries=0,
+                    )
                     # (69) 内层的 usage 也单独记录，避免从 Tool 父事件重复统计。
                     usage = response.get("usage", {})
                     # (70) RAG 需要完整文字，不接收截断或工具调用响应。
@@ -121,8 +166,22 @@ class RunExecution:
             recovery.charge_usage(self.state, usage, reserved_input, self.state["limits"]["max_output_tokens"])
             # (69) 用固定作用域区分 Agent 与 RAG 内层，不记录模型名称或配置。
             self.state["usage_history"][-1]["scope"] = scope
+            # (69) 默认记录请求成功。
+            status = "success"
+            # (69) 请求抛出异常时记录失败。
+            if error:
+                # (69) 不记录原始异常文字。
+                status = "error"
             # (69) Tracing 记录真实 usage；预算预留另存，不能冒充实测。
-            self.trace.finish(span, "error" if error else "success", error=error, usage=usage, reserved_input=reserved_input, reserved_output=self.state["limits"]["max_output_tokens"], estimated_cost=self.state["usage_history"][-1]["estimated_cost"])
+            self.trace.finish(
+                span,
+                status,
+                error=error,
+                usage=usage,
+                reserved_input=reserved_input,
+                reserved_output=self.state["limits"]["max_output_tokens"],
+                estimated_cost=self.state["usage_history"][-1]["estimated_cost"],
+            )
             # (70) 实际用量可能高于保护性估计，因此请求后再次检查。
             reason = recovery.check_used_budget(self.state)
             # (70) 已超预算时不继续运行工具或为失败再调用模型。
@@ -157,8 +216,14 @@ class RunExecution:
             wait_span = self.trace.start("node", "model_retry_wait", parent_id=parent_id, retry=retry_index + 1)
             # (70) 沿用原有限退避与 Retry-After 规则。
             can_retry = recovery.wait_to_retry(self.state, error, retry_index, self.clock, self.sleep, "model")
+            # (69) 默认等待被允许。
+            wait_status = "success"
+            # (69) 预算不允许继续等待时记录失败。
+            if not can_retry:
+                # (69) 后面会按已经保存的原因停止执行。
+                wait_status = "error"
             # (69) 只记录等待状态与耗时，不记录异常原文。
-            self.trace.finish(wait_span, "success" if can_retry else "error")
+            self.trace.finish(wait_span, wait_status)
             # (70) 等待不被允许时使用预算函数已设置的结束原因。
             if not can_retry:
                 # (70) 不越过等待限制继续发出请求。
