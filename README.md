@@ -12,6 +12,8 @@
 
 VS Code 的“运行和调试”下拉框选择“启动 FastAPI”，按 F5。项目已提供 `.vscode/launch.json`，固定运行根目录 `main_api.py`，使用项目 `.venv/bin/python`。`src/agent_learning/__main__.py` 只显示旧入口提示，不用于启动 API。
 
+`.vscode/settings.json` 已配置 `src` 导入路径、项目解释器、索引与自动导入补全。API 的 Service 获取函数、Service 的核心组件属性、图构造函数均声明具体类型，方便使用 F12“转到定义”。修改配置后可执行 VS Code 的 `Developer: Reload Window` 重载窗口；调试时进入方法使用 F11。
+
 启动只构造 Service、模型适配对象和图，不建表、不入库、不连接数据库、不请求模型。查询知识库和提问时才使用已配置服务；`POST /api/rag/ingest` 是明确的写入入口。`main_ingest.py` 默认 `WRITE_TO_DB=False`，只做预览。
 
 服务使用单进程和内存 Checkpoint，重启会丢失会话。所有自定义 API 的上方注释都有 JSON 参数示例，GET 接口另注明路径参数和无 JSON 请求体。

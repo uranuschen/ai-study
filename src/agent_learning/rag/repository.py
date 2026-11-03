@@ -1,14 +1,20 @@
 import json
+from typing import TYPE_CHECKING
 from uuid import NAMESPACE_URL, uuid5
-from agent_learning.core.models import Hit, SearchFilter
+from agent_learning.core.models import Chunk, Document, Hit, SearchFilter
 from agent_learning.core.providers import validate_vectors
 from agent_learning.rag.ingestion import document_hash
+
+
+# 连接类型只供编辑器使用，这里不加载驱动或连接数据库。
+if TYPE_CHECKING:
+    from psycopg2.extensions import connection as PostgresConnection
 
 
 # 方法功能：对业务键稳定编码，生成重复执行不变的 UUID。
 # 输入：组成业务标识的多个值；输出：UUID 字符串。
 # 业务键生成稳定 UUID，避免重复导入产生新记录。
-def stable_id(*parts):
+def stable_id(*parts) -> str:
     # JSON 编码消除连接符歧义。
     return str(uuid5(NAMESPACE_URL, json.dumps(parts, ensure_ascii=False)))
 
@@ -16,7 +22,7 @@ def stable_id(*parts):
 # 方法功能：为向量和关键词路径生成相同的权限、版本、标签与实体过滤条件。
 # 输入：SearchFilter 和模型名；输出：WHERE 条件字符串与绑定参数列表。
 # 两路检索必须复用同一条件构造函数。
-def filter_sql(filters, model):
+def filter_sql(filters: SearchFilter, model: str) -> tuple[str, list]:
     # 先约束权限与版本。
     clauses = ["d.tenant_id = %s", "c.tenant_id = %s", "d.security_level <= %s", "d.is_latest", "d.index_status = 'ready'", "c.embedding_model = %s"]
     # 所有值均绑定参数。
@@ -51,14 +57,16 @@ class PostgresRepository:
     # 方法功能：保存数据库连接配置和向量维度，构造实例时不连接数据库。
     # 输入：数据库连接 URL 与向量维度；输出：完成初始化的仓储。
     # 导入模块不会建表。
-    def __init__(self, database_url, dimension=512):
+    def __init__(self, database_url: str, dimension: int = 512) -> None:
         # 保存连接参数。
-        self.database_url, self.dimension = database_url, dimension
+        self.database_url: str = database_url
+        # 维度来自现有表结构配置。
+        self.dimension: int = dimension
 
     # 方法功能：创建一个普通数据库连接；调用方在 finally 中关闭。
     # 输入：readonly 是否只读；输出：psycopg2 连接对象。
     # 沿用旧代码 get_connection 的思路。
-    def get_connection(self, readonly=True):
+    def get_connection(self, readonly: bool = True) -> "PostgresConnection":
         import psycopg2
         # 没有配置就不连接。
         if not self.database_url:
@@ -82,7 +90,15 @@ class PostgresRepository:
     # 方法功能：校验已有版本，以单文档事务写原文、标签和父子块，最后标记 ready。
     # 输入：文档、父子块、向量、模型名和流水线指纹；输出：indexed 或 unchanged；冲突时抛出异常。
     # 每篇文档及所有子块原子写入。
-    def save(self, document, parents, chunks, vectors, model, fingerprint):
+    def save(
+        self,
+        document: Document,
+        parents: list[Chunk],
+        chunks: list[Chunk],
+        vectors: list[list[float]],
+        model: str,
+        fingerprint: str,
+    ) -> str:
         from psycopg2.extras import Json
         # 防止数据库部分写入才发现向量错误。
         validate_vectors(vectors, len(chunks), self.dimension)

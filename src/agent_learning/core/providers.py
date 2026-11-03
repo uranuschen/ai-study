@@ -1,6 +1,12 @@
 import math
+from typing import TYPE_CHECKING
 from agent_learning.core.config import Settings
 from agent_learning.core.models import Hit
+
+
+# 只给编辑器提供模型类型，实际加载仍在首次请求时进行。
+if TYPE_CHECKING:
+    from sentence_transformers import CrossEncoder, SentenceTransformer
 
 
 # 方法功能：检查向量数量、维度、有限数值与非零范数，防止错误向量进入数据库。
@@ -35,9 +41,13 @@ class LocalEmbedder:
     # 仅保存配置。
     def __init__(self, settings: Settings) -> None:
         # 记录向量身份。
-        self.model_name, self.dimension = settings.embedding_model, settings.embedding_dim
-        # 首次编码时才加载。
-        self.local_only, self._model = settings.local_files_only, None
+        self.model_name: str = settings.embedding_model
+        # 保存向量维度。
+        self.dimension: int = settings.embedding_dim
+        # 只使用本地缓存，不改变原有加载方式。
+        self.local_only: bool = settings.local_files_only
+        # 类型供编辑器识别 encode，首次编码时才加载实际模型。
+        self._model: "SentenceTransformer | None" = None
 
     # 方法功能：延迟加载文档向量模型，批量编码文本并校验输出。
     # 输入：文本字符串列表；输出：与输入一一对应的浮点向量列表。
@@ -71,9 +81,11 @@ class CrossEncoderReranker:
     # 方法功能：保存精排模型配置，实际预测时再加载模型。
     # 输入：Settings 配置；输出：完成初始化的实例。
     # 延迟加载模型。
-    def __init__(self, settings):
+    def __init__(self, settings: Settings) -> None:
         # 保存配置。
-        self.settings, self._model = settings, None
+        self.settings: Settings = settings
+        # 类型供编辑器识别 predict，实际模型仍然延迟加载。
+        self._model: "CrossEncoder | None" = None
 
     # 给每条候选资料重新打相关性分数，再按分数排序返回
     def rank(self, query: str, hits: list[Hit]) -> list[Hit]:
@@ -113,12 +125,12 @@ class CompatibleChatModel:
     # 方法功能：保存调用模型所需配置，此时不创建网络请求。
     # 输入：Settings 配置；输出：完成初始化的实例。
     # 在调用时才读取实际凭证。
-    def __init__(self, settings):
+    def __init__(self, settings: Settings) -> None:
         # 不创建网络连接。
-        self.settings = settings
+        self.settings: Settings = settings
 
     # 调用模型并返回文字，不读取用量，不生成执行日志。
-    def chat(self, messages):
+    def chat(self, messages: list[dict]) -> str:
         from openai import OpenAI
         # 缺少密钥时不发送请求。
         if not self.settings.llm_api_key:

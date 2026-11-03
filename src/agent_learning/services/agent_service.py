@@ -1,17 +1,29 @@
+from pathlib import Path
 from threading import Lock
 from uuid import uuid4
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.types import Command
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command, StateSnapshot
 from agent_learning.core.errors import ServiceError
+from agent_learning.core.models import SearchFilter
+from agent_learning.rag.answering import RAGPipeline
 from agent_learning.workflows.diagnosis_agent import build_graph
+from agent_learning.workflows.tool_model import CompatibleToolModel
 
 
 # 管理当前进程内的会话，负责把 HTTP 操作转换成图调用。
 class AgentService:
     # 模型、RAG、身份和业务文件由启动代码显式提供。
-    def __init__(self, model, pipeline, filters, data_file):
+    def __init__(
+        self,
+        model: CompatibleToolModel,
+        pipeline: RAGPipeline,
+        filters: SearchFilter,
+        data_file: Path,
+    ) -> None:
         # 不同会话使用不同编号隔离状态。
-        self.sessions = {}
+        self.sessions: dict[str, dict] = {}
         # 保护创建会话时对字典的修改。
         self.sessions_lock = Lock()
         # 保存可信身份，不从问题中提取。
@@ -19,9 +31,9 @@ class AgentService:
         # 内存存档重启后丢失，不创建数据库表。
         checkpointer = InMemorySaver()
         # 普通图连续运行，只在需要人工审批时暂停。
-        self.normal_graph = build_graph(model, pipeline, filters, checkpointer, data_file)
+        self.normal_graph: CompiledStateGraph = build_graph(model, pipeline, filters, checkpointer, data_file)
         # 暂停图用于演示第 65 课的工具前 Checkpoint。
-        self.paused_graph = build_graph(
+        self.paused_graph: CompiledStateGraph = build_graph(
             model, pipeline, filters, checkpointer, data_file, pause_before_tools=True,
         )
 
@@ -66,7 +78,7 @@ class AgentService:
         return session
 
     # 将图状态转换成业务响应，不把整份 State 暴露给 API。
-    def response(self, session_id: str, snapshot) -> dict:
+    def response(self, session_id: str, snapshot: StateSnapshot) -> dict:
         # 读取当前已保存的状态。
         state = snapshot.values
         # 未执行过问题时会话处于就绪状态。
@@ -134,19 +146,23 @@ class AgentService:
         session = self.lock_session(session_id)
         # 无论执行成功、失败或暂停都要释放锁。
         try:
+            # 从普通会话字典中明确取出图类型，便于补全 invoke / get_state。
+            graph: CompiledStateGraph = session["graph"]
+            # config 使用 LangGraph 已有的配置类型。
+            config: RunnableConfig = session["config"]
             # 取得当前执行进度。
-            snapshot = session["graph"].get_state(session["config"])
+            snapshot = graph.get_state(config)
             # 暂停或待审批时不接受新问题覆盖原任务。
             if snapshot.next:
                 # 客户端需要先恢复或审批。
                 raise ServiceError(409, "当前问题尚未完成，请先恢复执行或处理审批。")
             # 只提交新问题与服务端身份。
-            session["graph"].invoke(
+            graph.invoke(
                 {"question": question, "tenant_id": self.tenant_id},
-                config=session["config"],
+                config=config,
             )
             # 从同一 Checkpoint 读取完成或暂停后的结果。
-            snapshot = session["graph"].get_state(session["config"])
+            snapshot = graph.get_state(config)
             # 返回经过挑选的业务字段。
             return self.response(session_id, snapshot)
         # 异常也不能让会话永远保持占用。
@@ -160,8 +176,12 @@ class AgentService:
         session = self.lock_session(session_id)
         # 保证读取后释放锁。
         try:
+            # 字典本身不说明值的类型，在调用边界明确图类型。
+            graph: CompiledStateGraph = session["graph"]
+            # 保留同一会话的运行配置。
+            config: RunnableConfig = session["config"]
             # 使用原会话配置定位状态。
-            snapshot = session["graph"].get_state(session["config"])
+            snapshot = graph.get_state(config)
             # 先整理当前业务结果。
             result = self.response(session_id, snapshot)
             # 只挑出用户与最终回答。
@@ -193,8 +213,12 @@ class AgentService:
         session = self.lock_session(session_id)
         # 始终释放会话锁。
         try:
+            # 字典本身不说明值的类型，在调用边界明确图类型。
+            graph: CompiledStateGraph = session["graph"]
+            # 保留同一会话的运行配置。
+            config: RunnableConfig = session["config"]
             # 检查待执行位置。
-            snapshot = session["graph"].get_state(session["config"])
+            snapshot = graph.get_state(config)
             # 已结束的任务不能再次恢复。
             if not snapshot.next:
                 # 不把恢复当作重新提交问题。
@@ -204,9 +228,9 @@ class AgentService:
                 # 明确要求提交决定。
                 raise ServiceError(409, "当前正在等待人工审批，请调用审批接口。")
             # None 表示继续原状态，不重新执行准备节点。
-            session["graph"].invoke(None, config=session["config"])
+            graph.invoke(None, config=config)
             # 读取继续后的结果。
-            snapshot = session["graph"].get_state(session["config"])
+            snapshot = graph.get_state(config)
             # 可能继续暂停，也可能已经完成。
             return self.response(session_id, snapshot)
         # 失败后仍保留 Checkpoint，调用方可查看当前待办。
@@ -220,8 +244,12 @@ class AgentService:
         session = self.lock_session(session_id)
         # 任何分支都要释放锁。
         try:
+            # 字典本身不说明值的类型，在调用边界明确图类型。
+            graph: CompiledStateGraph = session["graph"]
+            # 保留同一会话的运行配置。
+            config: RunnableConfig = session["config"]
             # 读取当前真正暂停的目标。
-            snapshot = session["graph"].get_state(session["config"])
+            snapshot = graph.get_state(config)
             # 目标请求由图中的准备节点生成。
             request = snapshot.values.get("approval_request", {})
             # 没有待审批节点时不能提交决定。
@@ -241,9 +269,9 @@ class AgentService:
             # 只补入人工决定。
             value["decision"] = decision
             # 恢复同一个图和会话，不重新获得执行机会。
-            session["graph"].invoke(Command(resume=value), config=session["config"])
+            graph.invoke(Command(resume=value), config=config)
             # 读取恢复后的业务结果。
-            snapshot = session["graph"].get_state(session["config"])
+            snapshot = graph.get_state(config)
             # 后面还有其他审批时会返回新的待办。
             return self.response(session_id, snapshot)
         # 审批失败也要释放锁。

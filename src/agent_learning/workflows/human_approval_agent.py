@@ -1,3 +1,4 @@
+from langgraph.graph.state import CompiledStateGraph
 import json
 from pathlib import Path
 from langgraph.checkpoint.memory import InMemorySaver
@@ -165,7 +166,7 @@ def choose_tool_route(state: ApprovalState) -> str:
 
 
 #（67课新加）沿用原模型、RAG 与 Memory，只增加敏感工具审批分支。
-def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: SearchFilter, checkpointer: InMemorySaver, data_file: Path = DEFAULT_DATA_FILE, max_history_turns: int = 2, max_context_chars: int = 12000):
+def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: SearchFilter, checkpointer: InMemorySaver, data_file: Path = DEFAULT_DATA_FILE, max_history_turns: int = 2, max_context_chars: int = 12000) -> CompiledStateGraph:
     #（67课新加）继续限制知识库为规则资料，不让记录快照代替订单事实。
     if filters.doc_type not in ("policy", "process", "faq"):
         #（67课新加）资料类型由可信入口选择。

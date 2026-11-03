@@ -1,3 +1,4 @@
+from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -32,7 +33,7 @@ def answer_node(state: WorkflowState) -> dict:
 
 # 方法功能：连接两个节点并编译成可运行的工作流。
 # 执行顺序是 START → prepare → answer → END。
-def build_graph():
+def build_graph() -> CompiledStateGraph:
     # 声明所有节点共用上面的 State 字段。
     graph = StateGraph(WorkflowState)
     # 注册第一个节点，负责写入 clean_question。

@@ -19,7 +19,7 @@ from agent_learning.rag.retrieval import HybridRetriever, QueryProcessor
 # 方法功能：按顺序创建入库用到的对象，返回入库主流程。
 # 输入：配置和是否写库；输出：IngestionPipeline。
 # 只是把几步创建对象的代码放在一起。
-def build_ingestion_pipeline(settings, write=False):
+def build_ingestion_pipeline(settings: Settings, write: bool = False) -> IngestionPipeline:
     # 创建文件加载器。
     loader = DocumentLoader()
     # 创建切分器。
@@ -76,7 +76,7 @@ SECURITY_LEVEL = 1
 
 
 # 启动时明确创建依赖；不连接数据库、不执行入库、不请求模型。
-def build_services(settings=None):
+def build_services(settings: Settings | None = None) -> dict:
     # 正常启动使用已有配置，离线核查可以显式传入 Settings()。
     if settings is None:
         # 只读取配置，不输出配置内容。

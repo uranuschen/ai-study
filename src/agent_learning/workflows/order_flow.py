@@ -1,3 +1,4 @@
+from langgraph.graph.state import CompiledStateGraph
 # 导入路径类，用于接收入口提供的 JSON 文件位置。
 from pathlib import Path
 # 导入 TypedDict，用来说明 State 字典中保存哪些字段。
@@ -235,7 +236,7 @@ def summarize_node(state: WorkflowState) -> dict:
 
 
 # 方法功能：创建订单、支付、退款、总结节点及业务条件路由。
-def build_graph(data_file: Path = DEFAULT_DATA_FILE):
+def build_graph(data_file: Path = DEFAULT_DATA_FILE) -> CompiledStateGraph:
     # 内部函数绑定入口配置的路径，LangGraph 调用时只需传入 State。
     def run_get_order(state: WorkflowState) -> dict:
         # 调用订单节点并将局部更新字典返回给 LangGraph。

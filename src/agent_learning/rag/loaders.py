@@ -25,7 +25,7 @@ class DocumentLoader:
     # 方法功能：根据文件后缀选择加载方式，并保留页码、表名或行号等来源。
     # 输入：文件 Path 和默认租户；输出：Document 列表；不支持的格式会报错。
     # 只读取用户指定文件。
-    def load(self, path: Path, tenant_id="acme") -> list[Document]:
+    def load(self, path: Path, tenant_id: str = "acme") -> list[Document]:
         # 标准化后缀。
         suffix = path.suffix.lower()
         # 企业结构化数据入口。
@@ -97,7 +97,7 @@ class DocumentLoader:
     # 方法功能：按 vector_fields 投影业务 JSON，同时保留完整 payload 与元数据。
     # 输入：一条 JSON 对象、来源和默认租户；输出：一个 Document。
     # 将业务 JSON 映射为文档。
-    def from_record(self, record: dict, source: str, tenant_id="acme") -> Document:
+    def from_record(self, record: dict, source: str, tenant_id: str = "acme") -> Document:
         # 根记录必须为对象。
         if not isinstance(record, dict):
             # 防止错误结构。
@@ -132,6 +132,13 @@ class DocumentLoader:
     # 方法功能：为非 JSON 文件补齐统一文档字段和稳定来源标识。
     # 输入：路径、正文、租户、元数据及可选位置后缀；输出：一个 Document。
     # 为非 JSON 文件构造通用结构。
-    def _plain(self, path, content, tenant_id, metadata, suffix=""):
+    def _plain(
+        self,
+        path: Path,
+        content: str,
+        tenant_id: str,
+        metadata: dict,
+        suffix: str = "",
+    ) -> Document:
         # 路径构成稳定标识。
         return Document(external_id=f"{path.as_posix()}{suffix}", title=path.stem, content=content, tenant_id=tenant_id, source=str(path), metadata=metadata)

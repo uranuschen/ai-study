@@ -1,18 +1,28 @@
 from pathlib import Path
 from agent_learning.core.errors import ServiceError
 from agent_learning.core.models import SearchFilter
+from agent_learning.rag.answering import RAGPipeline
+from agent_learning.rag.ingestion import IngestionPipeline
 
 
 # 衔接文件入库与知识库问答，不包含 HTTP 或日志代码。
 class RagService:
     # 接收已经构造好的流程和可信身份。
-    def __init__(self, pipeline, preview_pipeline, ingestion_pipeline, data_dir, tenant_id, security_level):
-        # 保存问答流程。
-        self.pipeline = pipeline
-        # 预览流程没有数据库与向量模型。
-        self.preview_pipeline = preview_pipeline
-        # 真正入库流程只在显式调用 ingest 时运行。
-        self.ingestion_pipeline = ingestion_pipeline
+    def __init__(
+        self,
+        pipeline: RAGPipeline,
+        preview_pipeline: IngestionPipeline,
+        ingestion_pipeline: IngestionPipeline,
+        data_dir: Path,
+        tenant_id: str,
+        security_level: int,
+    ) -> None:
+        # 明确问答流程类型，方便编辑器跳转到 ask 方法。
+        self.pipeline: RAGPipeline = pipeline
+        # 明确预览流程类型；预览没有数据库与向量模型。
+        self.preview_pipeline: IngestionPipeline = preview_pipeline
+        # 明确入库流程类型；只有显式调用 ingest 才运行。
+        self.ingestion_pipeline: IngestionPipeline = ingestion_pipeline
         # 只允许读取项目资料目录。
         self.data_dir = Path(data_dir).resolve()
         # 租户和权限都由服务端提供。
@@ -58,7 +68,13 @@ class RagService:
         return {"documents": documents}
 
     # 使用可信身份问答，请求只能缩小资料范围。
-    def ask(self, question: str, business_module=None, doc_type=None, tags=None) -> dict:
+    def ask(
+        self,
+        question: str,
+        business_module: str | None = None,
+        doc_type: str | None = None,
+        tags: list[str] | None = None,
+    ) -> dict:
         # 未提供标签时使用空列表。
         if tags is None:
             # 不把 None 交给标签筛选逻辑。

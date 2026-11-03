@@ -1,3 +1,5 @@
+from pathlib import Path
+from langgraph.graph.state import CompiledStateGraph
 from agent_learning.business.tools import get_order, get_payment, get_refund
 from agent_learning.workflows.order_flow import build_graph
 
@@ -5,13 +7,13 @@ from agent_learning.workflows.order_flow import build_graph
 # 对外提供直接查询和固定订单工作流。
 class OrderService:
     # 身份与业务数据文件由服务端配置。
-    def __init__(self, tenant_id, data_file):
+    def __init__(self, tenant_id: str, data_file: Path) -> None:
         # 保存可信租户。
         self.tenant_id = tenant_id
         # 订单仍然只读本地 JSON。
-        self.data_file = data_file
+        self.data_file: Path = data_file
         # 固定流程只编译一次。
-        self.graph = build_graph(data_file)
+        self.graph: CompiledStateGraph = build_graph(data_file)
 
     # 查询一条订单。
     def get_order(self, order_id: str) -> dict:

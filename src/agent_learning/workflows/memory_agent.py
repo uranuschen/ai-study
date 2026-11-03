@@ -1,3 +1,4 @@
+from langgraph.graph.state import CompiledStateGraph
 import json
 from pathlib import Path
 from langgraph.checkpoint.memory import InMemorySaver
@@ -111,7 +112,7 @@ def memory_model_node(state: AgentState, model: CompatibleToolModel, max_history
 
 #-- 复用的--
 # 方法功能：沿用 prepare / model / tools 编排和条件路由，只替换前两个节点为 Memory 包装。
-def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: SearchFilter, checkpointer: InMemorySaver, data_file: Path = DEFAULT_DATA_FILE, max_history_turns: int = 2, max_context_chars: int = 12000):
+def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: SearchFilter, checkpointer: InMemorySaver, data_file: Path = DEFAULT_DATA_FILE, max_history_turns: int = 2, max_context_chars: int = 12000) -> CompiledStateGraph:
     # 仍然只查规则资料，不能把知识库订单快照当成当前业务事实。
     if filters.doc_type not in ("policy", "process", "faq"):
         # 沿用之前课程的资料边界。

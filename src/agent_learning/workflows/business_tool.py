@@ -1,3 +1,4 @@
+from langgraph.graph.state import CompiledStateGraph
 # 导入 State 字段定义工具，与前几课保持同样的写法。
 from typing import TypedDict
 # 导入路径类，用于选择本课离线数据文件。
@@ -79,7 +80,7 @@ def error_answer_node(state: WorkflowState) -> dict:
 
 
 # 方法功能：建立 prepare → get_order → 成功或失败回答的工作流。
-def build_graph(data_file: Path = DEFAULT_DATA_FILE):
+def build_graph(data_file: Path = DEFAULT_DATA_FILE) -> CompiledStateGraph:
     # 这个普通函数把本次选择的数据文件传给已有 Tool 节点。
     def run_get_order(state: WorkflowState) -> dict:
         # 节点职责仍在 get_order_node 中，可以在那里单步进入业务 Tool。

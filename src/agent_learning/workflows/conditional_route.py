@@ -1,3 +1,4 @@
+from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -60,7 +61,7 @@ def tool_node(state: WorkflowState) -> dict:
 
 
 # 方法功能：连接准备节点和两个互斥分支，编译为可运行的 LangGraph 图。
-def build_graph():
+def build_graph() -> CompiledStateGraph:
     # 所有节点读写同一份 WorkflowState。
     graph = StateGraph(WorkflowState)
     # 注册负责整理问题的节点。

@@ -137,7 +137,7 @@ class Settings:
 # 方法功能：用 load_dotenv 和 os.getenv 明确读取每一个配置项。
 # 输入：项目配置文件与环境变量；输出：Settings，不连接数据库、不加载模型。
 # 延续旧代码的配置读取方式。
-def load_settings():
+def load_settings() -> Settings:
     from dotenv import load_dotenv
     # 定位项目根目录。 __file__是特殊约定，当前模块路径
     project_root = Path(__file__).resolve().parents[3]

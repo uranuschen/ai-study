@@ -1,3 +1,7 @@
+from langgraph.checkpoint.memory import InMemorySaver
+from agent_learning.rag.answering import RAGPipeline
+from agent_learning.workflows.tool_model import CompatibleToolModel
+from langgraph.graph.state import CompiledStateGraph
 from pathlib import Path
 from langgraph.graph import END, START, StateGraph
 from agent_learning.business.tools import DEFAULT_DATA_FILE
@@ -6,7 +10,7 @@ from agent_learning.workflows.rag_agent import AgentState, choose_continue_route
 
 
 # 方法功能：复用上一课三个节点，只增加状态保存和 Tool 前暂停。
-def build_graph(model, pipeline, filters: SearchFilter, checkpointer, data_file: Path = DEFAULT_DATA_FILE):
+def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: SearchFilter, checkpointer: InMemorySaver, data_file: Path = DEFAULT_DATA_FILE) -> CompiledStateGraph:
     # 沿用上一课的规则资料范围，不把订单快照当成当前事实。
     if filters.doc_type not in ("policy", "process", "faq"):
         # 错误配置在执行前暴露。

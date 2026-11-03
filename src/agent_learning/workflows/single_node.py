@@ -1,3 +1,4 @@
+from langgraph.graph.state import CompiledStateGraph
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -23,7 +24,7 @@ def echo_node(state: ConsoleState) -> dict:
 
 # 方法功能：创建并编译只有一个节点的 LangGraph 工作流。
 # 执行顺序固定为 START → echo → END。
-def build_graph():
+def build_graph() -> CompiledStateGraph:
     # 用上面的字段定义创建共享 State 图。
     graph = StateGraph(ConsoleState)
     # 把普通 Python 函数注册为图中的一个节点。

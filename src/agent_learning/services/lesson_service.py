@@ -1,20 +1,22 @@
+from pathlib import Path
+from langgraph.graph.state import CompiledStateGraph
 from agent_learning.workflows import business_tool, conditional_route, single_node, state_flow
 
 
 # 保留基础课程的独立演示入口。
 class LessonService:
     # 小图启动时编译，执行时只传业务输入。
-    def __init__(self, tenant_id, data_file):
+    def __init__(self, tenant_id: str, data_file: Path) -> None:
         # 身份来自服务端。
         self.tenant_id = tenant_id
         # 单节点示例不访问模型。
-        self.single_graph = single_node.build_graph()
+        self.single_graph: CompiledStateGraph = single_node.build_graph()
         # 两节点示例演示 State 传值。
-        self.state_graph = state_flow.build_graph()
+        self.state_graph: CompiledStateGraph = state_flow.build_graph()
         # 条件路由示例只调用本地函数。
-        self.route_graph = conditional_route.build_graph()
+        self.route_graph: CompiledStateGraph = conditional_route.build_graph()
         # 业务 Tool 示例只读 JSON。
-        self.business_graph = business_tool.build_graph(data_file)
+        self.business_graph: CompiledStateGraph = business_tool.build_graph(data_file)
 
     # 单节点回显。
     def run_single_node(self, question: str) -> dict:

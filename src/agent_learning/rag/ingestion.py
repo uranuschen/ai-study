@@ -1,13 +1,22 @@
 import hashlib
 import json
-from agent_learning.core.providers import validate_vectors
+from pathlib import Path
+from typing import TYPE_CHECKING
+from agent_learning.core.models import Document
+from agent_learning.core.providers import LocalEmbedder, validate_vectors
 from agent_learning.rag.chunking import DocumentChunker
+from agent_learning.rag.loaders import DocumentLoader
+
+
+# 只供编辑器识别，避免 Repository 与入库模块在运行时互相导入。
+if TYPE_CHECKING:
+    from agent_learning.rag.repository import PostgresRepository
 
 
 # 方法功能：计算文档正文、JSON、来源和权限信息的稳定哈希，用于同版本幂等检查。
 # 输入：Document；输出：SHA-256 十六进制字符串。
 # 对实际业务内容计算幂等指纹。
-def document_hash(document):
+def document_hash(document: Document) -> str:
     # 使用普通字典保存正文、JSON、标签和权限字段。
     data = document.to_dict()
     # 发布状态可以随新版本改变。
@@ -22,16 +31,26 @@ class IngestionPipeline:
     # 方法功能：保存入库流程用到的几个普通对象。
     # 输入：loader、chunker、embedder、repository；输出：完成初始化的入库流程。
     # 直接接收需要调用的对象。
-    def __init__(self, loader, chunker: DocumentChunker, embedder=None, repository=None):
-        # 保存加载、向量化和数据库对象。
-        self.loader, self.embedder, self.repository = loader, embedder, repository
+    def __init__(
+        self,
+        loader: DocumentLoader,
+        chunker: DocumentChunker,
+        embedder: LocalEmbedder | None = None,
+        repository: "PostgresRepository | None" = None,
+    ) -> None:
+        # 明确加载器类型，方便跳转到 load。
+        self.loader: DocumentLoader = loader
+        # 预览时没有向量模型，写入时才提供。
+        self.embedder: LocalEmbedder | None = embedder
+        # 明确仓储类型，方便跳转到 save。
+        self.repository: "PostgresRepository | None" = repository
         # 明确标注切分器类型，方便编辑器跳转到 split 方法。
         self.chunker: DocumentChunker = chunker
 
     # 方法功能：遍历输入文档进行校验和切分，write=True 时再计算向量并原子保存。
     # 输入：文件路径、默认租户和写入开关；输出：每篇文档的版本、块数量与处理状态列表。
     # 默认只预览，不接触数据库或模型。
-    def run(self, path, tenant_id="acme", write=False):
+    def run(self, path: Path, tenant_id: str = "acme", write: bool = False) -> list[dict]:
         # 将不同文件转成统一文档。
         documents = self.loader.load(path, tenant_id)
         # 拒绝空导入文件。

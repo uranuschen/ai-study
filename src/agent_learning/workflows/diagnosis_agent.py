@@ -1,14 +1,19 @@
 import json
 from pathlib import Path
 from uuid import uuid4
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import interrupt
 from agent_learning.business.tools import DEFAULT_DATA_FILE, get_order, get_payment, get_refund, tool_result
+from agent_learning.core.models import SearchFilter
+from agent_learning.rag.answering import RAGPipeline
 from agent_learning.workflows.agent_loop import validate_model_message
 from agent_learning.workflows.human_approval_agent import APPROVAL_PROMPT, TOOL_SCHEMAS, simulate_cancel_order, validate_approval
 from agent_learning.workflows.memory_agent import context_size, prepare_memory_node, trim_messages
 from agent_learning.workflows.rag_agent import AgentState
 from agent_learning.workflows.recovery_agent import is_temporary_error
+from agent_learning.workflows.tool_model import CompatibleToolModel
 
 
 # 综合诊断只补充工具选择规则，订单事实仍由业务 Tool 提供。
@@ -87,7 +92,13 @@ def parse_argument(arguments: str, field: str) -> str:
 
 
 # 只读 Tool 使用明确分支分发，不执行模型提供的任意函数。
-def dispatch_tool(call: dict, tenant_id: str, pipeline, filters, data_file: Path) -> dict:
+def dispatch_tool(
+    call: dict,
+    tenant_id: str,
+    pipeline: RAGPipeline,
+    filters: SearchFilter,
+    data_file: Path,
+) -> dict:
     # 读取工具名和 JSON 参数。
     function = call["function"]
     # 知识库只接收规则问题。
@@ -140,10 +151,10 @@ def choose_route(state: DiagnosisState) -> str:
 
 # 编排已有核心能力，不记录节点、Tool、Token、费用或耗时事件。
 def build_graph(
-    model,
-    pipeline,
-    filters,
-    checkpointer,
+    model: CompatibleToolModel,
+    pipeline: RAGPipeline,
+    filters: SearchFilter,
+    checkpointer: InMemorySaver,
     data_file: Path = DEFAULT_DATA_FILE,
     max_steps: int = 10,
     max_tool_calls: int = 12,
@@ -151,7 +162,7 @@ def build_graph(
     max_history_turns: int = 2,
     max_context_chars: int = 12000,
     pause_before_tools: bool = False,
-):
+) -> CompiledStateGraph:
     # RAG 只能查询规则资料，不能用订单快照代替业务事实。
     if filters.doc_type not in ("policy", "process", "faq"):
         # 参数由可信服务端配置。

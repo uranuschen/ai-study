@@ -1,3 +1,5 @@
+from agent_learning.workflows.tool_model import CompatibleToolModel
+from langgraph.graph.state import CompiledStateGraph
 import json
 from pathlib import Path
 from typing import TypedDict
@@ -131,7 +133,7 @@ def prepare_node(state: AgentState, filters: SearchFilter) -> dict:
 #-- 复用的--
 # 方法功能：模型读取消息和工具说明，选择工具或给出最终回答。
 #（67课调整）允许新课程传入扩展工具说明；旧入口省略参数时行为不变。
-def model_node(state: AgentState, model, raise_errors: bool = False, tool_schemas: list | None = None) -> dict:
+def model_node(state: AgentState, model: CompatibleToolModel, raise_errors: bool = False, tool_schemas: list | None = None) -> dict:
     # 第 64 课失败直接结束；第 65 课允许异常抛出，以便从 Checkpoint 恢复。
     try:
         #（67课调整）使用本次图的工具说明，未指定时沿用原来的四个工具。
@@ -162,7 +164,7 @@ def model_node(state: AgentState, model, raise_errors: bool = False, tool_schema
 
 #-- 复用的--
 # 方法功能：只增加 RAG 分支，三个业务 Tool 仍复用原分发函数。
-def dispatch_tool(name: str, arguments: str, tenant_id: str, pipeline, filters: SearchFilter, data_file: Path = DEFAULT_DATA_FILE) -> dict:
+def dispatch_tool(name: str, arguments: str, tenant_id: str, pipeline: RAGPipeline, filters: SearchFilter, data_file: Path = DEFAULT_DATA_FILE) -> dict:
     # 三个业务 Tool 交给已有白名单，不重新编写业务查询。
     if name in ("get_order", "get_payment", "get_refund"):
         # 业务数据路径和身份仍由程序注入。
@@ -189,7 +191,7 @@ def dispatch_tool(name: str, arguments: str, tenant_id: str, pipeline, filters: 
 
 #-- 复用的--
 # 方法功能：执行本轮工具，并把完整结果按调用 ID 回传给模型。
-def tools_node(state: AgentState, pipeline, filters: SearchFilter, data_file: Path) -> dict:
+def tools_node(state: AgentState, pipeline: RAGPipeline, filters: SearchFilter, data_file: Path) -> dict:
     # 复制消息列表，不修改传入 State。
     messages = list(state["messages"])
     # 新结果追加到原有历史，引用也保存在这里。
@@ -229,7 +231,7 @@ def choose_model_route(state: AgentState) -> str:
 
 
 # 方法功能：只编排准备、模型和工具三个节点，结束时直接到 END。
-def build_graph(model, pipeline, filters: SearchFilter, data_file: Path = DEFAULT_DATA_FILE):
+def build_graph(model: CompatibleToolModel, pipeline: RAGPipeline, filters: SearchFilter, data_file: Path = DEFAULT_DATA_FILE) -> CompiledStateGraph:
     # 本课只允许规则资料类型，避免把订单快照当成当前事实。
     if filters.doc_type not in ("policy", "process", "faq"):
         # 查询范围来自入口，错误范围在构图时暴露。

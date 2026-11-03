@@ -9,12 +9,13 @@ BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR / "src"))
 
 from agent_learning.bootstrap import build_services
+from agent_learning.services.agent_service import AgentService
 
 
 # Console 只展示业务回答与审批，不输出执行统计。
 def main():
     # 构造对象不会主动查询数据库或请求模型。
-    service = build_services()["agent"]
+    service: AgentService = build_services()["agent"]
     # 创建默认会话。
     session_id = service.create_session()["session_id"]
     # 持续接收同会话的问题。

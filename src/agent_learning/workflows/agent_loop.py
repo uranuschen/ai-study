@@ -1,3 +1,5 @@
+from agent_learning.workflows.tool_model import CompatibleToolModel
+from langgraph.graph.state import CompiledStateGraph
 # 导入 JSON，用于解析模型参数和回传 Tool 结果。
 import json
 # 导入路径类，沿用上一课的本地业务数据配置。
@@ -169,7 +171,7 @@ def validate_model_message(message: dict) -> None:
 
 
 # 方法功能：执行一次模型决策，保存其回答或工具调用请求。
-def model_node(state: AgentState, model) -> dict:
+def model_node(state: AgentState, model: CompatibleToolModel) -> dict:
     # 无论成功还是请求异常，这次尝试都计入上限。
     model_steps = state["model_steps"] + 1
     # 模型调用与响应检查统一在这个边界内处理。
@@ -297,7 +299,7 @@ def finish_node(state: AgentState) -> dict:
 
 
 # 方法功能：用明确的节点和条件边建立受控 Agent 循环。
-def build_graph(model, data_file: Path = DEFAULT_DATA_FILE, max_steps: int = 5):
+def build_graph(model: CompatibleToolModel, data_file: Path = DEFAULT_DATA_FILE, max_steps: int = 5) -> CompiledStateGraph:
     # 构图前检查上限，拒绝零、负数、浮点数和布尔值。
     if type(max_steps) is not int or max_steps < 1:
         # 配置错误应在实际模型调用之前发现。

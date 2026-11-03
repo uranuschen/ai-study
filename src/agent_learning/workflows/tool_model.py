@@ -1,12 +1,13 @@
 from openai import OpenAI
+from agent_learning.core.config import Settings
 
 
 # 调用支持 Tool Calling 的模型，只返回后续流程需要的 assistant 消息。
 class CompatibleToolModel:
     # 保存配置，构造对象时不发送请求。
-    def __init__(self, settings):
+    def __init__(self, settings: Settings) -> None:
         # 配置不放入会话消息。
-        self.settings = settings
+        self.settings: Settings = settings
 
     # 发送消息和工具说明，让模型选择工具或直接回答。
     def chat_with_tools(self, messages: list, tools: list) -> dict:

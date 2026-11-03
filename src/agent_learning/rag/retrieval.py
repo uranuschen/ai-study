@@ -21,7 +21,7 @@ class QueryProcessor:
     # 方法功能：清理原问题，识别意图和单个业务实体，进行保守的同义词扩展。
     # 输入：问题字符串；输出：original、query、intent、entity_id 字典。
     # 改写只补充同义词，不删除原问题。
-    def process(self, question):
+    def process(self, question: str) -> dict:
         # 清理首尾空白。
         query = question.strip()
         # 限制空输入和过长问题。
@@ -223,15 +223,15 @@ class HybridRetriever:
         bm25: BM25Retriever | None = None,
     ) -> None:
         # 保存数据库操作对象，可跳转到 vector_search 和 lexical_corpus。
-        self.repository = repository
+        self.repository: PostgresRepository = repository
         # 保存向量模型对象，可跳转到 query。
-        self.embedder = embedder
+        self.embedder: LocalEmbedder = embedder
         # 保存召回数量、阈值和融合参数。
         self.settings: Settings = settings
         # 默认中文 BM25。
-        self.bm25 = bm25 or BM25Retriever()
+        self.bm25: BM25Retriever = bm25 or BM25Retriever()
         # 构造融合器。
-        self.fusion = ResultFusion(settings.fusion, settings.vector_weight)
+        self.fusion: ResultFusion = ResultFusion(settings.fusion, settings.vector_weight)
 
     # 方法功能：用同一过滤器执行两路召回，再融合为供精排使用的候选。
     # 输入：改写后的问题和 SearchFilter；输出：供精排使用的候选 Hit 列表。
