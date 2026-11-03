@@ -8,6 +8,7 @@ from langgraph.types import Command, StateSnapshot
 from agent_learning.core.errors import ServiceError
 from agent_learning.core.models import SearchFilter
 from agent_learning.rag.answering import RAGPipeline
+from agent_learning.workflows import approval_demo, pause_demo
 from agent_learning.workflows.diagnosis_agent import build_graph
 from agent_learning.workflows.tool_model import CompatibleToolModel
 
@@ -36,17 +37,27 @@ class AgentService:
         self.paused_graph: CompiledStateGraph = build_graph(
             model, pipeline, filters, checkpointer, data_file, pause_before_tools=True,
         )
+        # 最简图也使用现有存档器，由独立会话编号隔离状态。
+        self.pause_demo_graph: CompiledStateGraph = pause_demo.build_graph(checkpointer)
+        # 审批演示只使用固定图，不经过模型选择工具。
+        self.approval_demo_graph: CompiledStateGraph = approval_demo.build_graph(checkpointer)
 
     # 创建新会话，对应原来的 /new。
-    def create_session(self, pause_before_tools: bool = False) -> dict:
+    def create_session(
+        self,
+        pause_before_tools: bool = False,
+        graph: CompiledStateGraph | None = None,
+    ) -> dict:
         # 编号只用于找到会话，不记录追踪链路。
         session_id = uuid4().hex
-        # 默认使用综合诊断图。
-        graph = self.normal_graph
-        # 明确要求演示暂停时才选用暂停图。
-        if pause_before_tools:
-            # 两张图保存相同类型的业务状态。
-            graph = self.paused_graph
+        # 内部演示可以指定固定图，普通 API 仍按原来的开关选择。
+        if graph is None:
+            # 默认使用综合诊断图。
+            graph = self.normal_graph
+            # 明确要求工具前暂停时才使用暂停图。
+            if pause_before_tools:
+                # 保留原会话接口的行为。
+                graph = self.paused_graph
         # 会话只保存图引用、配置和串行访问锁。
         session = {
             "graph": graph,
@@ -59,6 +70,37 @@ class AgentService:
             self.sessions[session_id] = session
         # 会话尚未调用模型。
         return {"session_id": session_id, "status": "ready"}
+
+    # 演示接口内部创建会话，用户只需调用开始和恢复两个接口。
+    def start_pause_demo(self, question: str) -> dict:
+        # ID、配置和锁仍由现有 create_session 生成。
+        created = self.create_session(graph=self.pause_demo_graph)
+        # 复用现有提问流程，固定图执行第一步后暂停。
+        return self.ask(created["session_id"], question)
+
+    # 直接申请模拟取消，方便演示现有 approvals 接口。
+    def start_approval_demo(self, order_id: str) -> dict:
+        # 会话编号仍由统一的 create_session 生成。
+        created = self.create_session(graph=self.approval_demo_graph)
+        # 固定图整理订单号后，直接进入人工审批。
+        return self.ask(created["session_id"], order_id)
+
+    # 演示恢复只接受演示会话，避免误传普通 Agent 编号后调用模型。
+    def resume_pause_demo(self, session_id: str) -> dict:
+        # 只读取现有会话，不生成新编号。
+        with self.sessions_lock:
+            # 编号来自第一个演示接口。
+            session = self.sessions.get(session_id)
+        # 服务重启或编号错误时不能恢复。
+        if session is None:
+            # 返回与其他会话接口一致的不存在说明。
+            raise ServiceError(404, "会话不存在，请先创建会话。")
+        # 普通 Agent 会话不能走这个演示入口。
+        if session["graph"] is not self.pause_demo_graph:
+            # 保证这个演示不会触发模型或业务工具。
+            raise ServiceError(409, "请使用暂停演示接口返回的 session_id。")
+        # 复用原恢复方法的锁、进度检查和 invoke(None)。
+        return self.resume(session_id)
 
     # 取得指定会话，并禁止同一会话并发修改。
     def lock_session(self, session_id: str) -> dict:

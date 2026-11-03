@@ -58,6 +58,50 @@ GET 没有 JSON 请求体。支付与退款成功返回列表，无记录是成�
 
 服务每次只接受同一会话的一个请求。不存在的会话返回 404；会话忙、暂停时提新问题或提交旧审批编号返回 409；请求字段不符合要求返回 422。系统异常返回固定说明，不回显内部异常或凭证。
 
+## 最简暂停演示：只用两个接口
+
+两个请求都使用 POST，Body 选择 raw / JSON。第一个请求已经在内部调用现有 `create_session()` 生成 ID，不需要另调创建会话接口。
+
+第一个地址：
+
+```text
+http://127.0.0.1:8000/api/lessons/pause-demo
+```
+
+请求体：
+
+```json
+{"question": "你好"}
+```
+
+响应示意：
+
+```json
+{
+  "session_id": "第一个接口返回的新编号",
+  "status": "paused",
+  "answer": "第一步已执行，等待继续。",
+  "citations": [],
+  "approval": null
+}
+```
+
+第二个地址，替换为刚返回的编号：
+
+```text
+http://127.0.0.1:8000/api/lessons/pause-demo/{session_id}/resume
+```
+
+请求体：
+
+```json
+{}
+```
+
+返回 `completed`，answer 为 `第二步已执行，之前保存的问题是：你好`。恢复后再次调用返回 409，表示没有待执行节点；传普通 Agent 的编号也会拒绝，避免演示入口触发模型。
+
+核心图在 `workflows/pause_demo.py`：`START → prepare → answer → END`，编译时固定 `interrupt_before=["answer"]`。两次请求使用相同的会话配置和 Checkpoint。此示例没有 LLM、Tool、数据库或执行日志。
+
 ## 工具前暂停和恢复
 
 创建会话时提交：
@@ -70,7 +114,58 @@ GET 没有 JSON 请求体。支付与退款成功返回列表，无记录是成�
 
 保留待执行节点的异常也可以通过该接口继续。已经受控结束的失败没有待执行节点，不能通过恢复接口重新开始；需要提交新问题。
 
-## 人工审批
+## 最简审批演示：申请取消，再批准
+
+两个请求都使用 POST，Body 选择 raw / JSON。新增接口内部创建会话，不需要先调创建会话接口；批准时复用原有的 approvals 接口。新增接口后需要重启 `main_api.py`。
+
+第一个地址，申请模拟取消：
+
+```text
+http://127.0.0.1:8000/api/lessons/approval-demo
+```
+
+请求体：
+
+```json
+{"order_id": "A1001"}
+```
+
+响应示意：
+
+```json
+{
+  "session_id": "返回的会话编号",
+  "status": "waiting_approval",
+  "answer": "已申请模拟取消订单 A1001，等待批准。",
+  "citations": [],
+  "approval": {
+    "approval_id": "返回的审批编号",
+    "action": "cancel_order",
+    "order_id": "A1001",
+    "mode": "simulate"
+  }
+}
+```
+
+第二个地址，使用刚返回的会话编号：
+
+```text
+http://127.0.0.1:8000/api/agent/sessions/{session_id}/approvals
+```
+
+请求体：
+
+```json
+{"approval_id": "返回的审批编号", "decision": "approve"}
+```
+
+返回 `completed`，answer 为 `审批通过，已演示模拟取消订单 A1001；未修改业务数据。`。改成 `reject` 则直接结束，返回 `已拒绝，未执行模拟取消。`。同一次审批处理后不能再次批准；想重新演示，重新调用第一个接口。
+
+核心图在 `workflows/approval_demo.py`：`START → prepare → approval → cancel → END`。`approval` 中的 `decision = interrupt(request)` 暂停等待；原审批接口通过 `Command(resume=value)` 恢复，人工决定成为 `decision`。只有 `approve` 进入 `cancel`，`reject` 直接结束。
+
+本例只操作 State 中的演示数据，不读取、验证或修改实际订单，不调用 LLM 或数据库。审批请求在 prepare 节点保存，恢复时保留原来的审批编号。
+
+## 综合 Agent 人工审批
 
 对会话提问：
 
@@ -118,5 +213,6 @@ GET 没有 JSON 请求体。支付与退款成功返回列表，无记录是成�
 - Agent：`AgentService.ask()` → `diagnosis_agent.build_graph()` 中的节点函数。
 - 恢复：`AgentService.resume()` 的 `graph.invoke(None, ...)`。
 - 审批：`AgentService.approve()` → `run_approval()` → `run_execute_cancel()`。
+- 最简审批：`AgentService.start_approval_demo()` → `approval_demo.prepare_node()` → `approval_node()`；批准后进入 `cancel_node()`。
 
 `bootstrap.py` 只负责显式构造对象；`api/schemas.py` 只定义 HTTP 参数。业务代码保持普通类、函数、字典和 for / if，不增加日志、统计或额外框架。

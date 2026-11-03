@@ -65,8 +65,15 @@ API 接收请求，Service 调用核心方法，核心流程通过 Repository �
 | POST | `/api/lessons/state-flow` | 两节点 State 传值 |
 | POST | `/api/lessons/conditional-route` | 普通回答与本地 Tool 条件路由 |
 | POST | `/api/lessons/business-tool` | 业务 Tool 成功、失败分支 |
+| POST | `/api/lessons/pause-demo` | 自动创建演示会话，执行第一步后暂停 |
+| POST | `/api/lessons/pause-demo/{session_id}/resume` | 使用演示会话编号继续第二步 |
+| POST | `/api/lessons/approval-demo` | 自动创建演示会话，申请模拟取消并等待审批 |
 
 详细调用示例见 [API 使用说明](docs/20-fastapi.md)。
+
+最简单的暂停演示调用 `pause-demo` 和 `pause-demo/{session_id}/resume`：第一个传 `{"question":"你好"}`，内部复用 `create_session()` 生成编号，返回 `paused`；第二个在 URL 中填入刚返回的编号，请求体传 `{}`，返回 `completed`。演示是固定两节点图，不调用模型、业务 Tool 或数据库。
+
+最简单的审批演示先调用 `/api/lessons/approval-demo`，传 `{"order_id":"A1001"}`；取得 `session_id` 和 `approval.approval_id` 后，调用原 `/api/agent/sessions/{session_id}/approvals`，传 `{"approval_id":"返回的审批编号","decision":"approve"}`。固定图通过 `interrupt()` 等待批准，批准后返回模拟取消结果。它只演示流程，不读取、验证或修改实际订单，也不调用模型。
 
 ## 会话与执行
 
