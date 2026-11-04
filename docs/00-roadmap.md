@@ -17,7 +17,8 @@
 | 第 70 课综合诊断 | 会话、查询、规则引用、有限重试、执行限制与审批贯通 |
 | 第 71 课 MCP 概念 | `main_mcp_basics.py`，对照直接函数、function calling、MCP 与三种原语；版本台账见第 71 课文档 |
 | 第 72 课 MCP Server | `main_mcp.py` 启动 Streamable HTTP，注册 hello / greet，并验证新旧协议调用 |
+| 第 73 课订单 MCP Tool | 复用 JSON get_order，Server 固定租户，映射文字、结构化结果与业务失败标记 |
 
-当前不保留用量费用统计、执行日志、追踪事件或测试文件。最大执行机会与上下文字符上限只用于结束流程，不作为统计返回。业务 MCP Tool、MCP Client、真实业务库 Tool、微调留待后续课程。
+当前不保留用量费用统计、执行日志、追踪事件或测试文件。最大执行机会与上下文字符上限只用于结束流程，不作为统计返回。支付、退款与 RAG 的 MCP Tool、MCP Client、真实业务库 Tool、微调留待后续课程。
 
-[当前 API 与目录](../README.md) · [调用与断点](20-fastapi.md) · [第 71 课 MCP 概念](21-mcp-basics.md) · [第 72 课 MCP Server](22-mcp-server.md) · [后续业务与 MCP 设计](09-workflow-mcp-design.md)
+[当前 API 与目录](../README.md) · [调用与断点](20-fastapi.md) · [第 71 课 MCP 概念](21-mcp-basics.md) · [第 72 课 MCP Server](22-mcp-server.md) · [第 73 课订单 Tool](23-mcp-get-order.md) · [后续业务与 MCP 设计](09-workflow-mcp-design.md)

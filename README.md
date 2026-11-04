@@ -110,3 +110,9 @@ API 接收请求，Service 调用核心方法，核心流程通过 Repository �
 也可以直接 Run / Debug `main_mcp.py`，或选择 VS Code 的“启动 MCP（第72课）”。调用地址是 `http://127.0.0.1:8001/mcp`，工具定义在 `mcp_server/server.py`。
 
 本课只有无参数的 `hello` 和带字符串参数的 `greet`。SDK 负责工具发现、参数校验和结果转换；代码每个逻辑语句上方都有中文注释。已通过临时 TestClient 验证 `2026-07-28` 与 `2025-11-25` 两种协议的发现与调用，以及新协议的参数错误，详见 [启动与 Postman 示例](docs/22-mcp-server.md)。
+
+## 第 73 课：get_order MCP Tool
+
+重启同一个 `main_mcp.py`，`tools/list` 会增加 `get_order`。它只接收 `order_id`，复用 `src/agent_learning/business/tools.py` 的原函数，租户在 Server 中固定为 acme。成功或失败的业务字典同时提供文字与结构化结果，`success=false` 对应 MCP 的 `isError=true`。
+
+[第 73 课说明](docs/23-mcp-get-order.md) 包含完整 Postman Headers 与 JSON。普通函数 → MCP 结果的适配代码在 `mcp_server/server.py`，已验证正常查询、订单不存在、跨租户隔离与新旧协议调用。

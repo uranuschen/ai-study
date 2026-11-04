@@ -1,6 +1,17 @@
+# 导入包路径处理所需的标准库。
+import sys
+# 根据启动文件定位项目根目录。
+from pathlib import Path
 # 导入 HTTP 服务启动器，与 main_api.py 使用同一种启动方式。
 import uvicorn
-# 导入已经注册 hello、greet 的 MCP Server。
+
+
+# 根目录直接 Run / Debug 时，也能找到 src 下的业务代码。
+BASE_DIR = Path(__file__).resolve().parent
+# 与现有 main_api.py 使用相同的包定位方式。
+sys.path.insert(0, str(BASE_DIR / "src"))
+
+# 导入已经注册 hello、greet、get_order 的 MCP Server。
 from mcp_server.server import mcp
 
 

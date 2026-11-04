@@ -2,6 +2,8 @@
 
 本课只实现 `hello()` 和 `greet(name)`。代码使用普通函数，每个逻辑语句上方都有中文注释。
 
+学习到第 73 课后，同一个 Server 还会提供 `get_order`，见 [订单 MCP Tool](23-mcp-get-order.md)。
+
 ```text
 main_mcp.py              启动 HTTP 服务，地址为 127.0.0.1:8001/mcp
 mcp_server/
