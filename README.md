@@ -92,3 +92,9 @@ API 接收请求，Service 调用核心方法，核心流程通过 Repository �
 `main_ingest.py`、`main_ask.py` 和简短的 `main_workflow.py` 可手动运行。五个重复 Console 入口已合并，原课程的核心图保留在 `workflows/`。`old/`、`python_basic/`、`rag/` 和原课程资料保留用于对照。
 
 当前测试源文件和对应测试缓存已按要求删除，不保留测试运行入口。此次验证使用临时离线核查和 FastAPI TestClient，真实数据库、模型请求与向量入库未执行。
+
+## 第 71 课：MCP 概念
+
+运行 `.venv/bin/python -B main_mcp_basics.py`，用同一个 `hello()` 函数对照直接调用、function calling 与 MCP 调用字段。代码每个逻辑语句上方都有中文注释，使用标准库即可运行。它是概念演示；真实 Server 与 Client 在后续课程实现。
+
+[第 71 课说明](docs/21-mcp-basics.md) 包含调用方式对照、Tools / Resources / Prompts 分工和版本台账。后续 SDK 在 `pyproject.toml` 固定为 `mcp==2.3.0`，主协议为 `2026-07-28`，兼容 `2025-11-25` 是 Server 的待验收要求。
