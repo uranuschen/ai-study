@@ -40,15 +40,15 @@ Client 负责发起发现和调用；Server 负责暴露工具并执行对应函
 
 | 项目 | 课程约定 | 当前状态 |
 |---|---|---|
-| Python SDK | `mcp==2.3.0` | 已在 `pyproject.toml` 固定；本课示例只依赖标准库 |
-| 主协议 | `2026-07-28` | 第 72 课建立 Server 时采用 |
-| 旧客户端兼容 | `2025-11-25` | 第 72 课分别验证新旧客户端，尚未验收 |
-| 主传输 | `streamable-http` | 第 72 课使用 |
+| Python SDK | `mcp==2.3.0` | 已在 `pyproject.toml` 固定并安装；本课示例只依赖标准库 |
+| 主协议 | `2026-07-28` | 第 72 课已通过 HTTP 入口验证 |
+| 旧客户端兼容 | `2025-11-25` | 第 72 课已验证初始化、工具发现、调用和会话释放 |
+| 主传输 | `streamable-http` | 第 72 课使用，入口见 `main_mcp.py` |
 | 对照传输 | `stdio` | 第 78 课对照进程与生命周期 |
 
 SDK 版本根据 2026-11-04 核对的 [PyPI 2.3.0 发布](https://pypi.org/project/mcp/2.3.0/) 固定。SDK 2.x 的 Server 类名是 `MCPServer`，后续代码按此版本编写。[官方迁移说明](https://py.sdk.modelcontextprotocol.io/migration/#fastmcp-renamed-to-mcpserver)
 
-主协议使用每次请求携带的版本信息；旧协议使用 `initialize` 握手。Server 兼容两者是后续实现与验收要求，不代表本课已完成通信。[官方兼容说明](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning)
+主协议使用每次请求携带的版本信息；旧协议使用 `initialize` 握手。本课只展示概念，真实通信实现与兼容验证见 [第 72 课](22-mcp-server.md)。[官方兼容说明](https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning)
 
 ## 什么时候不需要 MCP
 

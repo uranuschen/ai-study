@@ -97,4 +97,16 @@ API 接收请求，Service 调用核心方法，核心流程通过 Repository �
 
 运行 `.venv/bin/python -B main_mcp_basics.py`，用同一个 `hello()` 函数对照直接调用、function calling 与 MCP 调用字段。代码每个逻辑语句上方都有中文注释，使用标准库即可运行。它是概念演示；真实 Server 与 Client 在后续课程实现。
 
-[第 71 课说明](docs/21-mcp-basics.md) 包含调用方式对照、Tools / Resources / Prompts 分工和版本台账。后续 SDK 在 `pyproject.toml` 固定为 `mcp==2.3.0`，主协议为 `2026-07-28`，兼容 `2025-11-25` 是 Server 的待验收要求。
+[第 71 课说明](docs/21-mcp-basics.md) 包含调用方式对照、Tools / Resources / Prompts 分工和版本台账。SDK 在 `pyproject.toml` 固定为 `mcp==2.3.0`，主协议为 `2026-07-28`。
+
+## 第 72 课：MCP Server
+
+在项目根目录运行：
+
+```bash
+.venv/bin/python -B main_mcp.py
+```
+
+也可以直接 Run / Debug `main_mcp.py`，或选择 VS Code 的“启动 MCP（第72课）”。调用地址是 `http://127.0.0.1:8001/mcp`，工具定义在 `mcp_server/server.py`。
+
+本课只有无参数的 `hello` 和带字符串参数的 `greet`。SDK 负责工具发现、参数校验和结果转换；代码每个逻辑语句上方都有中文注释。已通过临时 TestClient 验证 `2026-07-28` 与 `2025-11-25` 两种协议的发现与调用，以及新协议的参数错误，详见 [启动与 Postman 示例](docs/22-mcp-server.md)。

@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-当前入口已统一为 `main_api.py`，调用与断点见 [FastAPI](20-fastapi.md)。已实现截至第 70 课的核心能力；执行追踪、用量费用统计和日志已移除。PostgreSQL 业务 Tool 和 MCP 尚未接入，本文件不授权建表、初始化或数据库操作。
+FastAPI 入口是 `main_api.py`，调用与断点见 [FastAPI](20-fastapi.md)。已实现截至第 70 课的核心能力；执行追踪、用量费用统计和日志已移除。第 72 课已增加独立的 `main_mcp.py`，提供 hello / greet 两个 MCP Tool，调用见 [MCP Server](22-mcp-server.md)。业务 MCP Tool 和 PostgreSQL 业务 Tool 尚未接入，本文件不授权建表、初始化或数据库操作。
 
 ## 已确认的边界
 
@@ -61,7 +61,7 @@ RAG Tool：ask_knowledge_base → 现有 RAGPipeline.ask() → public.kb_* 六�
 
 当前正式入口是 `main_api.py`，接口位于 `src/agent_learning/api/`，Service 位于 `services/`。`bootstrap.py` 显式构造依赖；`workflows/` 保留基础图、固定流程和综合诊断图，`business/` 提供 JSON 只读查询，`rag/` 保留资料与问答组件。
 
-MCP Server / Client 仍为后续课程；不会因为本次 API 改写自动增加 MCP 或业务数据库结构。后续如需业务表 SQL，仍先提供文本供用户审阅和手动执行。
+第 72 课的 MCP Server 入口为 `main_mcp.py`，工具定义放在独立的 `mcp_server/server.py`，当前只提供 hello / greet。业务 MCP Tool 与正式 Client 仍为后续课程；业务数据源和数据库结构尚未改变。后续如需业务表 SQL，仍先提供文本供用户审阅和手动执行。
 
 第一阶段让工作流直接调用业务 Tool 和现有 RAG Tool。学习循环时，工作流在 State 中保存问题、已取得的订单/支付/退款结果、错误和调用次数；每一步决定继续调用哪个 Tool，或在证据足够时结束，并设置最大步骤数避免死循环。订单诊断可以是“查订单 → 按结果查支付或退款 → 必要时查制度 → 总结”，不要求每个问题都调用全部 Tool。
 

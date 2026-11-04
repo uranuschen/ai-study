@@ -7,7 +7,7 @@
 - 不能执行任何 Git 或 SVN 操作，包括只读查询、初始化、提交、分支、拉取和推送。
 - `old/` 是历史备份，只读保留；原有 `python_basic/`、`rag/` 和 `文档/` 保留用于对照，不作为新程序入口。
 - 不读取或输出 `.env` 中的密钥；不把密钥复制到备份、日志或示例配置。
-- 当前统一提供截至第 70 课已实现内容的 FastAPI：RAG 预览 / 入库 / 问答、业务查询、基础图、固定订单流程与综合 Agent。MCP、真实业务库 Tool 和微调仍留待后续逐课实现。
+- 当前统一提供截至第 70 课已实现内容的 FastAPI：RAG 预览 / 入库 / 问答、业务查询、基础图、固定订单流程与综合 Agent。第 72 课 MCP Server 已接入 hello / greet，独立入口为 `main_mcp.py`，工具位于 `mcp_server/server.py`，调用见 `docs/22-mcp-server.md`；业务 MCP Tool、MCP Client、真实业务库 Tool 和微调仍留待后续逐课实现。
 - 后续工作流、业务数据和 MCP 的架构约定见 `docs/09-workflow-mcp-design.md`；该设计文档不授权执行建表、初始化或其他数据库操作。
 - 代码以已学过的普通类、函数、字典、for / if 和库调用为基础，围绕课程核心技术点实现，不增加复杂业务或抽象层；不要加入 Protocol、dataclass、反射配置、argparse。主入口为 main_api.py，API 和 Service 分层，核心图在 src/agent_learning/workflows/；main_ingest.py、main_ask.py、main_workflow.py 保留为简短手动入口。
 - 每个自定义 API 上方都添加 JSON 入参示例；GET 接口注明无 JSON 请求体，并用 JSON 示意路径参数。租户与权限由服务端提供。
