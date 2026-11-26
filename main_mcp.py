@@ -11,7 +11,7 @@ BASE_DIR = Path(__file__).resolve().parent
 # 与现有 main_api.py 使用相同的包定位方式。
 sys.path.insert(0, str(BASE_DIR / "src"))
 
-# 导入已经注册 hello、greet、get_order 的 MCP Server。
+# 导入已经注册 hello、greet、订单、支付和退款工具的 MCP Server。
 from mcp_server.server import mcp
 
 

@@ -2,6 +2,8 @@
 
 本课在原 Server 中增加一个 `get_order`，只做业务函数复用、工具描述和结果映射。
 
+第 75 课之后，失败结果增加固定的 `error_code`、`retryable=false`，错误文字统一处理；当前格式见 [校验与错误分类](25-mcp-validation-errors.md)。
+
 ```text
 Postman / MCP Client
         ↓ tools/call，工具名为 get_order
@@ -101,4 +103,4 @@ Body 选择 raw / JSON：
 
 本次使用临时 TestClient 经 HTTP 入口验证了函数复用、正常与不存在订单、跨租户隔离、参数类型错误、新旧协议调用及原 hello / greet。业务 JSON 的内容未改变，临时样例文件在核查后已释放。
 
-本课查询 JSON 样例，保留金额字符串、来源和更新时间。支付、退款 Tool 在第 74 课实现，统一参数校验与错误分类在第 75 课实现。本课不调用模型或数据库，不添加执行日志、追踪和测试文件。
+本课查询 JSON 样例，保留金额字符串、来源和更新时间。支付、退款 Tool 见 [第 74 课](24-mcp-payment-refund.md)，统一参数校验与错误分类在第 75 课实现。本课不调用模型或数据库，不添加执行日志、追踪和测试文件。

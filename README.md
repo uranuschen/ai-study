@@ -116,3 +116,17 @@ API 接收请求，Service 调用核心方法，核心流程通过 Repository �
 重启同一个 `main_mcp.py`，`tools/list` 会增加 `get_order`。它只接收 `order_id`，复用 `src/agent_learning/business/tools.py` 的原函数，租户在 Server 中固定为 acme。成功或失败的业务字典同时提供文字与结构化结果，`success=false` 对应 MCP 的 `isError=true`。
 
 [第 73 课说明](docs/23-mcp-get-order.md) 包含完整 Postman Headers 与 JSON。普通函数 → MCP 结果的适配代码在 `mcp_server/server.py`，已验证正常查询、订单不存在、跨租户隔离与新旧协议调用。
+
+## 第 74 课：支付与退款 MCP Tools
+
+重启 `main_mcp.py` 后，工具列表增加 `get_payment`、`get_refund`。两个工具复用现有 JSON 查询函数，只接收 `order_id`。记录保留状态、金额字符串、数据来源和 `updated_at`；成功的空列表返回 `isError=false`。
+
+`MAX_RECORDS=10` 在 Server 固定。两个工具共用普通函数 `records_to_mcp`，成功结果保留列表并增加 `truncated`；超过上限时只返回前 10 条，同时提供 `notice` 说明这些记录不代表完整结果。完整 Headers、两种请求与空列表示例见 [第 74 课说明](docs/24-mcp-payment-refund.md)。
+
+## 第 75 课：参数校验与错误分类
+
+重启同一个 `main_mcp.py`。调用入口通过一个普通 SDK 中间件检查工具名、必填字符串、类型、额外字段和长度，错误只返回固定文字。订单不存在或不可读取使用相同提示；明确的工具权限拒绝返回 `FORBIDDEN`，所有本课错误都不自动重试。
+
+`mcp_server/controls.py` 提供普通辅助函数：参数最长 256 字符、单次工具等待最多 5 秒、序列化 Tool 结果最多 16 KiB，以及客户端可复用的 `classify_response()`。只读查询超时后线程仍可能继续完成；本课未增加 HTTP 登录或 OAuth。
+
+[错误映射表与 Postman 示例](docs/25-mcp-validation-errors.md) 区分 HTTP 连接／认证失败、JSON-RPC 协议错误和 `isError=true` 的工具失败。新旧协议、参数拒绝、错误隐藏、权限停止、超时和中文结果大小均使用临时离线核查。

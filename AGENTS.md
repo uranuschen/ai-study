@@ -7,8 +7,9 @@
 - 不能执行任何 Git 或 SVN 操作，包括只读查询、初始化、提交、分支、拉取和推送。
 - `old/` 是历史备份，只读保留；原有 `python_basic/`、`rag/` 和 `文档/` 保留用于对照，不作为新程序入口。
 - 不读取或输出 `.env` 中的密钥；不把密钥复制到备份、日志或示例配置。
-- 当前统一提供截至第 70 课已实现内容的 FastAPI：RAG 预览 / 入库 / 问答、业务查询、基础图、固定订单流程与综合 Agent。MCP Server 已接入第 72 课 hello / greet 与第 73 课 get_order，独立入口为 `main_mcp.py`，工具位于 `mcp_server/server.py`，调用见 `docs/22-mcp-server.md`、`docs/23-mcp-get-order.md`；get_order 复用现有 JSON 业务函数，租户由 Server 固定提供。支付、退款与 RAG 的 MCP Tool、MCP Client、真实业务库 Tool 和微调仍留待后续逐课实现。
+- 当前统一提供截至第 70 课已实现内容的 FastAPI：RAG 预览 / 入库 / 问答、业务查询、基础图、固定订单流程与综合 Agent。MCP Server 已接入第 72 课 hello / greet、第 73 课 get_order 与第 74 课 get_payment / get_refund，独立入口为 `main_mcp.py`，工具位于 `mcp_server/server.py`，调用见 `docs/22-mcp-server.md`、`docs/23-mcp-get-order.md`、`docs/24-mcp-payment-refund.md`；业务查询复用现有 JSON 函数，租户由 Server 固定提供。支付、退款 MCP 结果保留列表，最多返回 10 条，成功时提供 truncated，截断时增加 notice。RAG 的 MCP Tool、MCP Client、真实业务库 Tool 和微调仍留待后续逐课实现。
 - 后续工作流、业务数据和 MCP 的架构约定见 `docs/09-workflow-mcp-design.md`；该设计文档不授权执行建表、初始化或其他数据库操作。
+- 第 75 课 MCP 调用入口已校验必填、字符串类型、额外字段与长度；错误采用固定代码和文字，不回显内部详情。`mcp_server/controls.py` 提供等待时间、Tool 结果大小限制和无自动重试的响应分类；实际限制与错误映射见 `docs/25-mcp-validation-errors.md`。本地 Server 未配置登录或 OAuth，固定租户不等于身份认证。
 - 代码以已学过的普通类、函数、字典、for / if 和库调用为基础，围绕课程核心技术点实现，不增加复杂业务或抽象层；不要加入 Protocol、dataclass、反射配置、argparse。主入口为 main_api.py，API 和 Service 分层，核心图在 src/agent_learning/workflows/；main_ingest.py、main_ask.py、main_workflow.py 保留为简短手动入口。
 - 每个自定义 API 上方都添加 JSON 入参示例；GET 接口注明无 JSON 请求体，并用 JSON 示意路径参数。租户与权限由服务端提供。
 - 按用户要求移除执行追踪、用量费用统计、日志和相关测试文件，不重新增加；保留业务消息、引用、审批绑定、有限重试及防止无限调用的内部控制。会话编号只用于续聊和恢复。
