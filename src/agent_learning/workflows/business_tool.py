@@ -36,11 +36,11 @@ def prepare_node(state: WorkflowState) -> dict:
 
 
 # 方法功能：从 State 读取参数，调用业务 Tool，并把结果交回工作流。
-def get_order_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE) -> dict:
+def get_order_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE, business_store=None) -> dict:
     # 在节点边界接住 Tool 的意外异常，供本课观察失败分支。
     try:
-        # 在这一行打断点并单步进入，可以看到真正执行的 Python Tool。
-        result = get_order(state["order_id"], state["tenant_id"], data_file=data_file)
+        # 在这一行打断点并单步进入，可以看到实际执行的 JSON 或 PostgreSQL 业务查询。
+        result = get_order(state["order_id"], state["tenant_id"], data_file=data_file, store=business_store)
     # 预料之外的 Tool 异常也转换为统一失败结果。
     except Exception as error:
         # 在这一行打断点可查看 error；回答不输出内部异常细节。
@@ -65,8 +65,10 @@ def answer_node(state: WorkflowState) -> dict:
     order = state["tool_result"]["data"]
     # 直接使用业务数据中的状态与金额，不调用模型猜测事实。
     answer = f"订单 {order['order_id']}：{order['status']}，金额 {order['amount']} {order['currency']}。"
-    # 明确说明数据来源和样例更新时间。
-    answer += f"这是本地 JSON 模拟结果，截至 {order['updated_at']}。"
+    # 按实际数据来源区分说明，避免切到数据库后仍提示 JSON。
+    source_label = "PostgreSQL 只读业务表结果" if order.get("source") == "postgres" else "本地 JSON 模拟结果"
+    # 明确说明数据来源和记录更新时间。
+    answer += f"这是{source_label}，截至 {order['updated_at']}。"
     # 保存成功分支标签和最终回答。
     return {"branch": "success", "answer": answer}
 
@@ -80,11 +82,11 @@ def error_answer_node(state: WorkflowState) -> dict:
 
 
 # 方法功能：建立 prepare → get_order → 成功或失败回答的工作流。
-def build_graph(data_file: Path = DEFAULT_DATA_FILE) -> CompiledStateGraph:
-    # 这个普通函数把本次选择的数据文件传给已有 Tool 节点。
+def build_graph(data_file: Path = DEFAULT_DATA_FILE, business_store=None) -> CompiledStateGraph:
+    # 这个普通函数把本次选择的数据源传给已有 Tool 节点。
     def run_get_order(state: WorkflowState) -> dict:
         # 节点职责仍在 get_order_node 中，可以在那里单步进入业务 Tool。
-        return get_order_node(state, data_file)
+        return get_order_node(state, data_file, business_store=business_store)
 
     # 声明所有节点共同读写上面的 State。
     graph = StateGraph(WorkflowState)

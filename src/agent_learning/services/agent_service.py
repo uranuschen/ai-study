@@ -5,6 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command, StateSnapshot
+from agent_learning.business.tools import DEFAULT_DATA_FILE, JsonBusinessStore
 from agent_learning.core.errors import ServiceError
 from agent_learning.core.models import SearchFilter
 from agent_learning.rag.answering import RAGPipeline
@@ -15,13 +16,14 @@ from agent_learning.workflows.tool_model import CompatibleToolModel
 
 # 管理当前进程内的会话，负责把 HTTP 操作转换成图调用。
 class AgentService:
-    # 模型、RAG、身份和业务文件由启动代码显式提供。
+    # 模型、RAG、身份和只读业务数据源由启动代码显式提供。
     def __init__(
         self,
         model: CompatibleToolModel,
         pipeline: RAGPipeline,
         filters: SearchFilter,
-        data_file: Path,
+        data_file: Path = DEFAULT_DATA_FILE,
+        business_store=None,
     ) -> None:
         # 不同会话使用不同编号隔离状态。
         self.sessions: dict[str, dict] = {}
@@ -29,13 +31,17 @@ class AgentService:
         self.sessions_lock = Lock()
         # 保存可信身份，不从问题中提取。
         self.tenant_id = filters.tenant_id
+        # 未传入业务存储时保持默认本地 JSON 行为。
+        self.business_store = business_store if business_store is not None else JsonBusinessStore(data_file)
         # 内存存档重启后丢失，不创建数据库表。
         checkpointer = InMemorySaver()
         # 普通图连续运行，只在需要人工审批时暂停。
-        self.normal_graph: CompiledStateGraph = build_graph(model, pipeline, filters, checkpointer, data_file)
+        self.normal_graph: CompiledStateGraph = build_graph(
+            model, pipeline, filters, checkpointer, data_file, business_store=self.business_store,
+        )
         # 暂停图用于演示第 65 课的工具前 Checkpoint。
         self.paused_graph: CompiledStateGraph = build_graph(
-            model, pipeline, filters, checkpointer, data_file, pause_before_tools=True,
+            model, pipeline, filters, checkpointer, data_file, pause_before_tools=True, business_store=self.business_store,
         )
         # 最简图也使用现有存档器，由独立会话编号隔离状态。
         self.pause_demo_graph: CompiledStateGraph = pause_demo.build_graph(checkpointer)

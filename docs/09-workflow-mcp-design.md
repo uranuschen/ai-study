@@ -1,6 +1,6 @@
 # 工作流、业务数据与 MCP 后续接入设计
 
-FastAPI 入口是 `main_api.py`，调用与断点见 [FastAPI](20-fastapi.md)。已实现截至第 70 课的核心能力；执行追踪、用量费用统计和日志已移除。独立 MCP 入口为 `main_mcp.py`，已提供 hello / greet / get_order / get_payment / get_refund，调用见 [MCP Server](22-mcp-server.md)、[订单 MCP Tool](23-mcp-get-order.md)、[支付退款 MCP Tools](24-mcp-payment-refund.md)。三个业务工具复用现有 JSON 函数；PostgreSQL 业务 Tool 尚未接入，本文件不授权建表、初始化或数据库操作。
+FastAPI 入口是 `main_api.py`，调用与断点见 [FastAPI](20-fastapi.md)。已实现截至第 70 课的核心能力；执行追踪、用量费用统计和日志已移除。独立 MCP 入口为 `main_mcp.py`，已提供 hello / greet / get_order / get_payment / get_refund，调用见 [MCP Server](22-mcp-server.md)、[订单 MCP Tool](23-mcp-get-order.md)、[支付退款 MCP Tools](24-mcp-payment-refund.md)。第 76 课已增加可切换的只读 PostgreSQL 业务实现（`BUSINESS_DATA_SOURCE=json|postgres`，默认 `json`）及待审阅 SQL 文本，详见 [业务数据库 Tool](26-business-postgres-tool.md)；本文件不授权建表、初始化或数据库操作。
 
 ## 已确认的边界
 

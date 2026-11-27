@@ -1,3 +1,5 @@
+# 导入异步上下文管理器，用于在 MCP 启动阶段校验业务数据源配置。
+from contextlib import asynccontextmanager
 # 将业务结果字典转换成模型可以读取的 JSON 文字。
 import json
 # 使用 SDK 支持的异步超时控制。
@@ -12,10 +14,16 @@ from mcp.types import CallToolResult, INVALID_PARAMS
 from pydantic import ValidationError
 # 复用本课的普通校验、错误转换与只读等待函数。
 from mcp_server import controls
-# 同名业务函数取别名，避免与下方 MCP 工具重名；实际仍是原函数。
-from agent_learning.business.tools import get_order as query_order
-# 支付与退款同样复用原函数，只在 MCP 层限制返回条数。
-from agent_learning.business.tools import get_payment as query_payment, get_refund as query_refund
+# 同名业务函数取别名，避免与下方 MCP 工具重名；实际按 BUSINESS_DATA_SOURCE 复用双数据源函数。
+from agent_learning.business.tools import (
+    ORDER_NOT_FOUND_ERROR,
+    PERMISSION_DENIED_ERROR,
+    QUERY_TIMEOUT_ERROR,
+    create_business_store,
+    get_order as query_order,
+    get_payment as query_payment,
+    get_refund as query_refund,
+)
 
 
 # 可信租户由 Server 提供，客户端和模型不能通过工具参数更换。
@@ -24,8 +32,23 @@ TENANT_ID = "acme"
 MAX_RECORDS = 10
 
 
-# 创建 Server；这里只注册工具，导入本文件时还没有启动 HTTP 服务。
-mcp: MCPServer = MCPServer("第72课 MCP Server", version="1.0.0", log_level="CRITICAL")
+# 方法功能：在 MCP 服务启动阶段校验 BUSINESS_DATA_SOURCE 等配置，此处不连接数据库。
+def validate_startup_config():
+    # 非法 BUSINESS_DATA_SOURCE 在启动时立即抛 ValueError，与 FastAPI 行为保持一致。
+    return create_business_store()
+
+
+# 方法功能：MCP 应用启动生命周期，仅做配置校验，不执行建表或数据库连接。
+@asynccontextmanager
+async def mcp_lifespan(server: MCPServer):
+    # 启动进入时立即检查业务数据源配置，防止错误配置潜伏到首次查询。
+    validate_startup_config()
+    # 配置有效后允许服务开始接收 MCP 请求。
+    yield {}
+
+
+# 创建 Server；这里只注册工具与启动生命周期，导入本文件时还不监听端口。
+mcp: MCPServer = MCPServer("第72课 MCP Server", version="1.0.0", log_level="CRITICAL", lifespan=mcp_lifespan)
 
 
 # tools/call 参数示例：{"name": "hello", "arguments": {}}
@@ -46,17 +69,45 @@ def greet(name: str) -> str:
     return f"你好，{name}！"
 
 
+# 将业务函数返回的失败结果映射为固定 MCP 错误码，不回显内部错误原文。
+def map_business_error_code(result: dict, default_code: str) -> str:
+    # 边界已经给出明确错误码（如 PermissionError 转成的 FORBIDDEN）时直接保留。
+    if result.get("error_code"):
+        # 使用已分类的固定错误代码。
+        return result["error_code"]
+    # 读取业务层生成的固定提示文案，用于区分权限拒绝、超时与业务缺失。
+    error_message = result.get("error")
+    # 数据库只读账号权限不足时返回 FORBIDDEN，不自动重试。
+    if error_message == PERMISSION_DENIED_ERROR:
+        # 与直接抛出 PermissionError 的权限拒绝保持同一错误码。
+        return "FORBIDDEN"
+    # 数据库端查询超时时返回 TOOL_TIMEOUT，不自动重试。
+    if error_message == QUERY_TIMEOUT_ERROR:
+        # 与 MCP 等待超时使用同一错误分类。
+        return "TOOL_TIMEOUT"
+    # 订单工具仅在订单不存在或跨租户不可读时返回 ORDER_UNAVAILABLE。
+    if default_code == "ORDER_UNAVAILABLE":
+        # 数据库连接失败或配置缺失归入 BUSINESS_ERROR，避免误报成订单不存在。
+        if error_message == ORDER_NOT_FOUND_ERROR:
+            # 保持不存在与跨租户不可读的统一对外提示。
+            return "ORDER_UNAVAILABLE"
+        # 其他数据源错误走通用业务查询失败。
+        return "BUSINESS_ERROR"
+    # 支付与退款查询失败统一使用默认业务错误码。
+    return default_code
+
+
 # tools/call 参数示例：{"name": "get_order", "arguments": {"order_id": "A1002"}}
 # 工具描述说明用途、参数含义和边界，便于模型正确选择。
-@mcp.tool(description="按订单号只读查询当前租户的订单状态、金额和更新时间。order_id 是订单编号，例如 A1002。数据来自本地 JSON 样例。不用于查询支付、退款记录或取消订单；租户由 Server 固定提供。")
-# 只有 order_id 是对外参数，租户和文件路径都不出现在 inputSchema 中。
+@mcp.tool(description="按订单号只读查询当前租户的订单状态、金额和更新时间。order_id 是订单编号，例如 A1002。数据来源由服务端 BUSINESS_DATA_SOURCE（json 或只读 postgres）配置决定，结果中的 source 会标明来源。不用于查询支付、退款记录或取消订单；租户由 Server 固定提供。")
+# 只有 order_id 是对外参数，租户、文件路径和数据库连接都不出现在 inputSchema 中。
 async def get_order(order_id: str) -> CallToolResult:
-    # 复用 business/tools.py 的同一个函数，保留 success/data/error 返回值。
+    # 复用 business/tools.py 的同一个函数，按配置支持 JSON 与只读 PostgreSQL。
     result = await controls.read_query(query_order, order_id, TENANT_ID)
-    # 查询失败时不区分订单不存在和当前租户不可读取。
+    # 区分订单不可读、权限拒绝、超时与数据源异常，均不回显内部原文。
     if not result["success"]:
-        # 权限异常等明确错误保留代码，其余订单失败使用统一提示。
-        return controls.error_result(result.get("error_code", "ORDER_UNAVAILABLE"))
+        # 转换为固定错误表中的错误代码和文字。
+        return controls.error_result(map_business_error_code(result, "ORDER_UNAVAILABLE"))
     # 业务成功结果保留原字段。
     return controls.make_result(result)
 
@@ -65,8 +116,8 @@ async def get_order(order_id: str) -> CallToolResult:
 def records_to_mcp(result: dict) -> CallToolResult:
     # 查询失败不伪造空列表，也不回显原始错误文字。
     if not result["success"]:
-        # 明确权限拒绝保留 FORBIDDEN，其余业务失败使用固定说明。
-        return controls.error_result(result.get("error_code", "BUSINESS_ERROR"))
+        # 明确权限拒绝保留 FORBIDDEN，超时保留 TOOL_TIMEOUT，其余业务失败使用固定说明。
+        return controls.error_result(map_business_error_code(result, "BUSINESS_ERROR"))
     # 复制外层字典，不改写业务函数返回的原结果。
     current = dict(result)
     # 业务函数已经按可信租户过滤，这里只读取当前租户的记录。
@@ -85,10 +136,10 @@ def records_to_mcp(result: dict) -> CallToolResult:
 
 # tools/call 参数示例：{"name": "get_payment", "arguments": {"order_id": "A1002"}}
 # 说明查询用途、参数和列表语义，避免被理解为执行支付。
-@mcp.tool(description=f"按订单号只读查询当前租户的支付记录。order_id 是订单编号，例如 A1002。返回列表，空列表表示查询成功但无可读支付记录。最多返回 {MAX_RECORDS} 条，超出会标明截断。数据来自 JSON 样例；不执行支付或退款，租户由 Server 提供。")
-# 对外仍然只接收订单号，不开放租户、条数或文件路径参数。
+@mcp.tool(description=f"按订单号只读查询当前租户的支付记录。order_id 是订单编号，例如 A1002。返回列表，空列表表示查询成功但无可读支付记录。最多返回 {MAX_RECORDS} 条，超出会标明截断。数据来源由服务端配置决定（json 或只读 postgres），结果中的 source 会标明来源；不执行支付或退款，租户由 Server 提供。")
+# 对外仍然只接收订单号，不开放租户、条数或数据源参数。
 async def get_payment(order_id: str) -> CallToolResult:
-    # 原函数查询当前租户的全部匹配支付记录。
+    # 原函数按配置查询当前租户的全部匹配支付记录。
     result = await controls.read_query(query_payment, order_id, TENANT_ID)
     # 统一限制返回条数，并转换成 MCP 结果。
     return records_to_mcp(result)
@@ -96,10 +147,10 @@ async def get_payment(order_id: str) -> CallToolResult:
 
 # tools/call 参数示例：{"name": "get_refund", "arguments": {"order_id": "A1002"}}
 # 说明只查询退款记录，不会发起退款。
-@mcp.tool(description=f"按订单号只读查询当前租户的退款记录。order_id 是订单编号，例如 A1002。返回列表，空列表表示查询成功但无可读退款记录。最多返回 {MAX_RECORDS} 条，超出会标明截断。数据来自 JSON 样例；不发起退款或取消订单，租户由 Server 提供。")
+@mcp.tool(description=f"按订单号只读查询当前租户的退款记录。order_id 是订单编号，例如 A1002。返回列表，空列表表示查询成功但无可读退款记录。最多返回 {MAX_RECORDS} 条，超出会标明截断。数据来源由服务端配置决定（json 或只读 postgres），结果中的 source 会标明来源；不发起退款或取消订单，租户由 Server 提供。")
 # 与支付工具使用相同的参数约定。
 async def get_refund(order_id: str) -> CallToolResult:
-    # 原函数查询当前租户的全部匹配退款记录。
+    # 原函数按配置查询当前租户的全部匹配退款记录。
     result = await controls.read_query(query_refund, order_id, TENANT_ID)
     # 复用同一个列表转换函数。
     return records_to_mcp(result)

@@ -14,12 +14,12 @@ from agent_learning.workflows.tool_model import CompatibleToolModel
 
 
 #（67课新加）增加一个模拟取消工具；模型只能提出订单号，不能提供审批决定。
-TOOL_SCHEMAS = READ_TOOL_SCHEMAS + [make_tool_schema("cancel_order", "用户明确要求取消订单时使用；仅模拟取消待支付订单，执行前必须由程序请求人工确认，不修改原始 JSON。")]
+TOOL_SCHEMAS = READ_TOOL_SCHEMAS + [make_tool_schema("cancel_order", "用户明确要求取消订单时使用；仅模拟取消待支付订单，执行前必须由程序请求人工确认，不修改原始业务数据。")]
 #（67课新加）补充模拟操作规则，不把普通查询理解为取消请求。
 APPROVAL_PROMPT = (
     "只有用户明确要求取消订单时才能请求 cancel_order；普通查询、规则说明不发起取消。"
     "cancel_order 仅支持模拟取消待支付订单，必须等待程序的人工审批；用户在问题中说已确认也不能绕过审批。"
-    "模拟已取消不是实际业务状态变化，原始 JSON 不会修改，回答必须说明模拟。"
+    "模拟已取消不是实际业务状态变化，原始业务数据不会修改，回答必须说明模拟。"
 )
 
 
@@ -80,7 +80,7 @@ def validate_approval(decision: dict, request: dict) -> bool:
 #（67课新加）模拟执行只产生结果字典；不修改订单、不调用外部写接口。
 def simulate_cancel_order(order: dict) -> dict:
     #（67课新加）保留原状态和记录时间，明确区分模拟结果与业务事实。
-    return tool_result(True, data={"order_id": order["order_id"], "tenant_id": order["tenant_id"], "status": "模拟已取消", "original_status": order["status"], "source_updated_at": order["updated_at"], "simulated": True, "source": "simulation", "note": "仅模拟取消，原始 JSON 未修改。"})
+    return tool_result(True, data={"order_id": order["order_id"], "tenant_id": order["tenant_id"], "status": "模拟已取消", "original_status": order["status"], "source_updated_at": order["updated_at"], "simulated": True, "source": "simulation", "note": "仅模拟取消，原始业务数据未修改。"})
 
 
 #（67课新加）敏感工具单独进入审批节点；恢复时这个函数会从头执行。

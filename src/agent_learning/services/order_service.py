@@ -1,34 +1,36 @@
 from pathlib import Path
 from langgraph.graph.state import CompiledStateGraph
-from agent_learning.business.tools import get_order, get_payment, get_refund
+from agent_learning.business.tools import DEFAULT_DATA_FILE, JsonBusinessStore, get_order, get_payment, get_refund
 from agent_learning.workflows.order_flow import build_graph
 
 
 # 对外提供直接查询和固定订单工作流。
 class OrderService:
-    # 身份与业务数据文件由服务端配置。
-    def __init__(self, tenant_id: str, data_file: Path) -> None:
+    # 身份与只读业务数据源由服务端配置。
+    def __init__(self, tenant_id: str, data_file: Path = DEFAULT_DATA_FILE, business_store=None) -> None:
         # 保存可信租户。
         self.tenant_id = tenant_id
-        # 订单仍然只读本地 JSON。
+        # 保留 JSON 路径属性，兼容已有调用和调试查看。
         self.data_file: Path = data_file
-        # 固定流程只编译一次。
-        self.graph: CompiledStateGraph = build_graph(data_file)
+        # 未显式传入存储对象时默认按指定路径读取本地 JSON。
+        self.business_store = business_store if business_store is not None else JsonBusinessStore(data_file)
+        # 固定流程只编译一次，并绑定当前配置的只读业务存储。
+        self.graph: CompiledStateGraph = build_graph(data_file, business_store=self.business_store)
 
     # 查询一条订单。
     def get_order(self, order_id: str) -> dict:
-        # 复用现有 Tool 的校验和租户过滤。
-        return get_order(order_id, self.tenant_id, self.data_file)
+        # 复用统一业务函数的校验、租户过滤与双数据源切换。
+        return get_order(order_id, self.tenant_id, store=self.business_store)
 
     # 查询全部支付记录，允许成功空列表。
     def get_payments(self, order_id: str) -> dict:
         # 不发起支付。
-        return get_payment(order_id, self.tenant_id, self.data_file)
+        return get_payment(order_id, self.tenant_id, store=self.business_store)
 
     # 查询全部退款记录，允许成功空列表。
     def get_refunds(self, order_id: str) -> dict:
         # 不发起退款。
-        return get_refund(order_id, self.tenant_id, self.data_file)
+        return get_refund(order_id, self.tenant_id, store=self.business_store)
 
     # 固定流程按业务结果查询订单、支付、退款并生成说明。
     def check_order(self, order_id: str) -> dict:

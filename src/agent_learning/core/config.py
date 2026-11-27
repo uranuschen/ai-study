@@ -53,6 +53,12 @@ class Settings:
         per_chunk_chars=700,
         # 小规模学习语料上限，超限明确报错。
         bm25_max_chunks=10000,
+        # 业务查询数据源开关：json 或 postgres，默认使用本地 JSON。
+        business_data_source='json',
+        # 业务只读数据库连接串，与 RAG 的 DATABASE_URL 独立配置。
+        business_database_url='',
+        # 可选本地业务 JSON 路径，空字符串表示使用默认样例文件。
+        business_data_file='',
     ):
         # 从 .env.db 加载账号密码，打印配置时隐藏连接串。
         self.database_url = database_url
@@ -98,8 +104,28 @@ class Settings:
         self.per_chunk_chars = per_chunk_chars
         # 小规模学习语料上限，超限明确报错。
         self.bm25_max_chunks = bm25_max_chunks
+        # 统一整理业务数据源配置，防止首尾空格或大小写影响判断。
+        self.business_data_source = str(business_data_source).strip().lower()
+        # 保存业务只读连接串，打印配置时隐藏。
+        self.business_database_url = business_database_url
+        # 保存可选的业务 JSON 文件路径。
+        self.business_data_file = business_data_file
         # 初始化后检查参数。
         self.validate()
+
+    # 方法功能：打印配置对象时隐藏数据库连接串与模型密钥，避免误泄露凭证。
+    def __repr__(self) -> str:
+        # 只展示是否配置了连接串和密钥，不输出明文内容。
+        return (
+            "Settings("
+            f"database_url={'<configured>' if self.database_url else '<empty>'}, "
+            f"business_data_source={self.business_data_source!r}, "
+            f"business_database_url={'<configured>' if self.business_database_url else '<empty>'}, "
+            f"business_data_file={self.business_data_file!r}, "
+            f"llm_model={self.llm_model!r}, "
+            f"llm_api_key={'<configured>' if self.llm_api_key else '<empty>'}"
+            ")"
+        )
 
     # 方法功能：检查参数范围和相互关系，非法配置直接报错。
     # 检查配置之间的关系。
@@ -132,6 +158,10 @@ class Settings:
         if self.llm_timeout <= 0:
             # 防止配置无效超时。
             raise ValueError("LLM_TIMEOUT 必须大于 0")
+        # 业务数据源只允许明确支持的两种实现，不静默回退。
+        if self.business_data_source not in {"json", "postgres"}:
+            # 拼写错误或不支持的数据源启动时立即提示。
+            raise ValueError("BUSINESS_DATA_SOURCE 只能是 json 或 postgres")
 
 
 # 方法功能：用 load_dotenv 和 os.getenv 明确读取每一个配置项。
@@ -197,4 +227,10 @@ def load_settings() -> Settings:
         per_chunk_chars=int(os.getenv("PER_CHUNK_CHARS", "700")),
         # 小规模学习语料上限，超限明确报错。
         bm25_max_chunks=int(os.getenv("BM25_MAX_CHUNKS", "10000")),
+        # 选择订单、支付、退款的数据来源，默认仍为本地 JSON。
+        business_data_source=os.getenv("BUSINESS_DATA_SOURCE", "json"),
+        # 独立的业务只读数据库连接串，不影响现有 RAG 数据库配置。
+        business_database_url=os.getenv("BUSINESS_DATABASE_URL", ""),
+        # 可选自定义本地业务 JSON 路径，未配置时使用项目默认样例文件。
+        business_data_file=os.getenv("BUSINESS_DATA_FILE", ""),
     )

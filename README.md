@@ -38,7 +38,7 @@ src/agent_learning/
     lesson_service.py               基础图的独立调用
   core/                             配置、数据对象、模型适配
   rag/                              加载、切分、入库、检索、精排、引用校验
-  business/                         JSON 订单、支付、退款 Tool
+  business/                         JSON 与只读 PostgreSQL 订单、支付、退款 Tool
   workflows/                        基础图、固定流程和综合诊断图
 ```
 
@@ -130,3 +130,9 @@ API 接收请求，Service 调用核心方法，核心流程通过 Repository �
 `mcp_server/controls.py` 提供普通辅助函数：参数最长 256 字符、单次工具等待最多 5 秒、序列化 Tool 结果最多 16 KiB，以及客户端可复用的 `classify_response()`。只读查询超时后线程仍可能继续完成；本课未增加 HTTP 登录或 OAuth。
 
 [错误映射表与 Postman 示例](docs/25-mcp-validation-errors.md) 区分 HTTP 连接／认证失败、JSON-RPC 协议错误和 `isError=true` 的工具失败。新旧协议、参数拒绝、错误隐藏、权限停止、超时和中文结果大小均使用临时离线核查。
+
+## 第 76 课：可切换数据源的只读数据库 Tool
+
+业务查询函数 `get_order`、`get_payment`、`get_refund` 现支持通过 `BUSINESS_DATA_SOURCE=json|postgres` 在本地 JSON 与只读 PostgreSQL 业务表之间切换，默认仍为 `json`；FastAPI（`main_api.py`）、LangGraph 工作流和 MCP Server（`main_mcp.py`）统一复用同一套配置与只读实现。
+
+PostgreSQL 查询位于 `src/agent_learning/business/postgres_store.py`，使用三条固定 SQL、参数绑定、租户过滤、只读会话、显式只读事务与数据库端语句超时；两种数据源统一规范金额字符串、`+08:00` 更新时间、可选 `payment_id` 与排序顺序，FastAPI 与 MCP 启动阶段均立即校验 `BUSINESS_DATA_SOURCE`。业务表 `sql/05_business_schema.sql`、演示数据 `sql/06_business_seed.sql` 与最小权限授权 `sql/07_business_readonly_role.sql`（需先手动创建 `biz_ro` 角色）仅提供文本供审阅和手动执行，程序不自动建表或初始化。配置方法与双模式对照清单见 [第 76 课说明](docs/26-business-postgres-tool.md)。

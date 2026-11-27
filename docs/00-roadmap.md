@@ -20,7 +20,8 @@
 | 第 73 课订单 MCP Tool | 复用 JSON get_order，Server 固定租户，映射文字、结构化结果与业务失败标记 |
 | 第 74 课支付退款 MCP Tools | 复用 get_payment / get_refund，保留列表与空列表成功语义，固定上限与截断提示 |
 | 第 75 课校验与错误 | 字符串必填、类型、额外字段校验；HTTP / JSON-RPC / Tool 分类；固定错误与等待、结果大小限制 |
+| 第 76 课业务数据库 Tool | `BUSINESS_DATA_SOURCE=json\|postgres` 切换数据源；固定 SQL、参数绑定、租户过滤、只读事务；待审阅 `biz.*` SQL 文本 |
 
-当前不保留用量费用统计、执行日志、追踪事件或测试文件。最大执行机会与上下文字符上限只用于结束流程，不作为统计返回。RAG 的 MCP Tool、MCP Client、真实业务库 Tool、微调留待后续课程。
+当前不保留用量费用统计、执行日志、追踪事件或测试文件。最大执行机会与上下文字符上限只用于结束流程，不作为统计返回。RAG 的 MCP Tool、MCP Client、微调留待后续课程；真实业务表联调待用户手动建表并另行授权业务只读账号后进行。
 
-[当前 API 与目录](../README.md) · [调用与断点](20-fastapi.md) · [第 71 课 MCP 概念](21-mcp-basics.md) · [第 72 课 MCP Server](22-mcp-server.md) · [第 73 课订单 Tool](23-mcp-get-order.md) · [第 74 课支付退款](24-mcp-payment-refund.md) · [第 75 课校验错误](25-mcp-validation-errors.md) · [后续业务与 MCP 设计](09-workflow-mcp-design.md)
+[当前 API 与目录](../README.md) · [调用与断点](20-fastapi.md) · [第 71 课 MCP 概念](21-mcp-basics.md) · [第 72 课 MCP Server](22-mcp-server.md) · [第 73 课订单 Tool](23-mcp-get-order.md) · [第 74 课支付退款](24-mcp-payment-refund.md) · [第 75 课校验错误](25-mcp-validation-errors.md) · [第 76 课业务数据库 Tool](26-business-postgres-tool.md) · [后续业务与 MCP 设计](09-workflow-mcp-design.md)

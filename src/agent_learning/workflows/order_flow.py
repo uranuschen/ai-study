@@ -52,11 +52,11 @@ def prepare_node(state: WorkflowState) -> dict:
 
 
 # 方法功能：查询订单，只更新当前订单结果。
-def get_order_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE) -> dict:
+def get_order_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE, business_store=None) -> dict:
     # 防止意外的 Python 异常直接中断整个工作流。
     try:
-        # 订单号和租户来自 State，文件路径来自入口配置。
-        result = get_order(state["order_id"], state["tenant_id"], data_file=data_file)
+        # 订单号和租户来自 State，只读数据源由入口配置注入。
+        result = get_order(state["order_id"], state["tenant_id"], data_file=data_file, store=business_store)
     # 意外异常与正常的 Tool 失败一样交给业务分支处理。
     except Exception as error:
         # Debug 时在这里查看 error，不把异常详情当成业务事实。
@@ -84,11 +84,11 @@ def choose_order_route(state: WorkflowState) -> str:
 
 
 # 方法功能：查询全部支付记录，不覆盖已经取得的订单结果。
-def get_payment_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE) -> dict:
+def get_payment_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE, business_store=None) -> dict:
     # 将意外异常转为统一的 Tool 失败结果。
     try:
         # 查询的仍然是同一租户和同一订单。
-        result = get_payment(state["order_id"], state["tenant_id"], data_file=data_file)
+        result = get_payment(state["order_id"], state["tenant_id"], data_file=data_file, store=business_store)
     # 捕获正常返回格式之外的执行异常。
     except Exception as error:
         # 可以在这里单步检查 error。
@@ -128,11 +128,11 @@ def choose_payment_route(state: WorkflowState) -> str:
 
 
 # 方法功能：查询全部退款记录，保留前两步已经取得的结果。
-def get_refund_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE) -> dict:
+def get_refund_node(state: WorkflowState, data_file: Path = DEFAULT_DATA_FILE, business_store=None) -> dict:
     # 将意外异常转换为可总结的失败结果。
     try:
         # 查询退款记录，而不是向业务系统发起退款。
-        result = get_refund(state["order_id"], state["tenant_id"], data_file=data_file)
+        result = get_refund(state["order_id"], state["tenant_id"], data_file=data_file, store=business_store)
     # 捕获 Tool 意外抛出的异常。
     except Exception as error:
         # Debug 时可在这里检查原始异常。
@@ -223,8 +223,20 @@ def summarize_node(state: WorkflowState) -> dict:
                     for refund in refunds:
                         # 展示每笔退款状态、金额、原因和更新时间。
                         lines.append(f"退款 {refund['refund_id']}：{refund['status']}，金额 {refund['amount']} {refund['currency']}，原因：{refund['reason']}；截至 {refund['updated_at']}。")
-    # 所有分支都说明当前是模拟数据，不是实时业务诊断。
-    lines.append("数据来源：本地 JSON 模拟；以上为记录更新时间对应的状态。")
+    # 根据已取得的订单数据来源标注说明，避免在 PostgreSQL 模式下误写成本地 JSON。
+    order_source = order_result["data"].get("source") if order_result.get("success") and isinstance(order_result.get("data"), dict) else None
+    # 明确区分 PostgreSQL 只读业务表与本地 JSON 模拟来源。
+    if order_source == "postgres":
+        # PostgreSQL 演示表也只反映库内最后一次更新时的状态。
+        lines.append("数据来源：PostgreSQL 只读业务表；以上为记录更新时间对应的状态。")
+    # 明确来自 JSON 样例时保持原有提示。
+    elif order_source == "json":
+        # 说明当前是本地模拟数据。
+        lines.append("数据来源：本地 JSON 模拟；以上为记录更新时间对应的状态。")
+    # 订单未查到或查询失败时使用中性提示。
+    else:
+        # 不猜测未返回数据的数据源类型。
+        lines.append("数据来源：当前配置的只读业务数据源；以上为本次查询结果说明。")
     # 只新增结束分支和总结，完整 Tool 结果仍然保留在 State 中。
     return {
         # 业务分支可以在 Console 或 Debug 中观察。
@@ -236,19 +248,19 @@ def summarize_node(state: WorkflowState) -> dict:
 
 
 # 方法功能：创建订单、支付、退款、总结节点及业务条件路由。
-def build_graph(data_file: Path = DEFAULT_DATA_FILE) -> CompiledStateGraph:
-    # 内部函数绑定入口配置的路径，LangGraph 调用时只需传入 State。
+def build_graph(data_file: Path = DEFAULT_DATA_FILE, business_store=None) -> CompiledStateGraph:
+    # 内部函数绑定入口配置的数据源，LangGraph 调用时只需传入 State。
     def run_get_order(state: WorkflowState) -> dict:
         # 调用订单节点并将局部更新字典返回给 LangGraph。
-        return get_order_node(state, data_file)
-    # 为支付节点绑定同一个文件路径。
+        return get_order_node(state, data_file, business_store=business_store)
+    # 为支付节点绑定同一个业务数据源。
     def run_get_payment(state: WorkflowState) -> dict:
         # 可以在 get_payment_node 内单步进入业务 Tool。
-        return get_payment_node(state, data_file)
-    # 为退款节点绑定同一个文件路径。
+        return get_payment_node(state, data_file, business_store=business_store)
+    # 为退款节点绑定同一个业务数据源。
     def run_get_refund(state: WorkflowState) -> dict:
         # 可以在 get_refund_node 内单步进入业务 Tool。
-        return get_refund_node(state, data_file)
+        return get_refund_node(state, data_file, business_store=business_store)
     # 使用共享的 State 字段创建图。
     graph = StateGraph(WorkflowState)
     # prepare 负责整理输入和准备结果字段。

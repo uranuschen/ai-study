@@ -11,8 +11,8 @@ BASE_DIR = Path(__file__).resolve().parent
 # 与现有 main_api.py 使用相同的包定位方式。
 sys.path.insert(0, str(BASE_DIR / "src"))
 
-# 导入已经注册 hello、greet、订单、支付和退款工具的 MCP Server。
-from mcp_server.server import mcp
+# 导入已经注册 hello、greet、订单、支付和退款工具的 MCP Server 及启动配置校验函数。
+from mcp_server.server import mcp, validate_startup_config
 
 
 # SDK 生成 Streamable HTTP 应用和 /mcp 地址，生命周期也由 SDK 管理。
@@ -20,8 +20,10 @@ from mcp_server.server import mcp
 app = mcp.streamable_http_app(json_response=True)
 
 
-# 直接 Run / Debug 本文件时才监听端口。
+# 直接 Run / Debug 本文件时才校验配置并监听端口。
 if __name__ == "__main__":
+    # 绑定端口前先校验 BUSINESS_DATA_SOURCE 等配置，非法值立即报错退出；不连接数据库。
+    validate_startup_config()
     # 在本机 8001 端口启动，关闭访问日志和框架日志。
     uvicorn.run(
         app,

@@ -98,6 +98,7 @@ def dispatch_tool(
     pipeline: RAGPipeline,
     filters: SearchFilter,
     data_file: Path,
+    business_store=None,
 ) -> dict:
     # 读取工具名和 JSON 参数。
     function = call["function"]
@@ -115,16 +116,16 @@ def dispatch_tool(
     order_id = parse_argument(function["arguments"], "order_id")
     # 明确分发订单查询。
     if function["name"] == "get_order":
-        # 身份和文件路径不由模型提供。
-        return get_order(order_id, tenant_id, data_file)
+        # 身份与只读业务数据源均由服务端提供，不从模型参数读取。
+        return get_order(order_id, tenant_id, data_file, store=business_store)
     # 支付查询返回全部匹配记录。
     if function["name"] == "get_payment":
         # 不发起支付。
-        return get_payment(order_id, tenant_id, data_file)
+        return get_payment(order_id, tenant_id, data_file, store=business_store)
     # 退款查询返回全部匹配记录。
     if function["name"] == "get_refund":
         # 不发起退款。
-        return get_refund(order_id, tenant_id, data_file)
+        return get_refund(order_id, tenant_id, data_file, store=business_store)
     # 取消订单只能进入人工审批分支。
     return tool_result(False, error="未知工具或工具不允许从查询节点执行。")
 
@@ -162,6 +163,7 @@ def build_graph(
     max_history_turns: int = 2,
     max_context_chars: int = 12000,
     pause_before_tools: bool = False,
+    business_store=None,
 ) -> CompiledStateGraph:
     # RAG 只能查询规则资料，不能用订单快照代替业务事实。
     if filters.doc_type not in ("policy", "process", "faq"):
@@ -282,8 +284,8 @@ def build_graph(
             current["remaining_tools"] -= 1
             # 普通查询可以有限重试，敏感操作不在这里执行。
             try:
-                # 租户、知识库权限和文件路径均由服务端提供。
-                result = dispatch_tool(call, current["tenant_id"], pipeline, filters, data_file)
+                # 租户、知识库权限和业务只读数据源均由服务端提供。
+                result = dispatch_tool(call, current["tenant_id"], pipeline, filters, data_file, business_store=business_store)
             # 不保存异常原文或失败追踪事件。
             except Exception as error:
                 # 临时故障且仍有机会才重试。
@@ -326,7 +328,7 @@ def build_graph(
             # 不执行模拟取消。
             return current
         # 只读验证目标订单。
-        result = get_order(order_id, current["tenant_id"], data_file)
+        result = get_order(order_id, current["tenant_id"], data_file, store=business_store)
         # 不可读订单不支持取消。
         if not result["success"]:
             # 保存查询失败的业务结果。
@@ -346,7 +348,7 @@ def build_graph(
                 "order_id": order["order_id"],
                 "simulated": True,
                 "duplicate": True,
-                "note": "本会话已模拟取消，未重复执行；原始 JSON 未修改。",
+                "note": "本会话已模拟取消，未重复执行；原始业务数据未修改。",
             }))
             # 不重新要求审批。
             return current
@@ -418,7 +420,7 @@ def build_graph(
             # 保留业务边界。
             return current
         # 人工等待期间状态可能变化，执行前重新查询。
-        result = get_order(current["approval_request"]["order_id"], current["tenant_id"], data_file)
+        result = get_order(current["approval_request"]["order_id"], current["tenant_id"], data_file, store=business_store)
         # 不可读或不再待支付时停止。
         if not result["success"] or result["data"]["status"] != "待支付":
             # 不将旧批准用于新的业务状态。
@@ -469,7 +471,7 @@ def build_graph(
             "tool_error": "工具查询失败，本轮结束。",
             "business_error": "订单不存在、不可读取或不满足操作条件，本轮结束。",
             "approval_invalid": "审批参数无效，未执行模拟取消。",
-            "approval_rejected": "已拒绝模拟取消，原始 JSON 未修改。",
+            "approval_rejected": "已拒绝模拟取消，原始业务数据未修改。",
             "action_error": "模拟执行结果未确认，本轮停止，不自动重试。",
         }
         # 失败或拒绝不再额外请求模型解释。

@@ -1,4 +1,5 @@
 from pathlib import Path
+from agent_learning.business.tools import create_business_store
 from agent_learning.core.config import Settings, load_settings
 from agent_learning.core.models import SearchFilter
 from agent_learning.services.agent_service import AgentService
@@ -85,8 +86,10 @@ def build_services(settings: Settings | None = None) -> dict:
     settings.local_files_only = True
     # 定位项目根目录。
     base_dir = Path(__file__).resolve().parents[2]
-    # 订单业务继续只读 JSON。
-    data_file = base_dir / "data" / "business_demo.json"
+    # 根据 BUSINESS_DATA_SOURCE 显式创建 JSON 或 PostgreSQL 只读业务存储，此处不连库。
+    business_store = create_business_store(settings)
+    # 兼容保留默认文件路径，实际业务查询统一由 business_store 执行。
+    data_file = getattr(business_store, "data_file", base_dir / "data" / "business_demo.json")
     # RAG 组件延迟到实际请求时加载模型或建立数据库连接。
     pipeline = build_pipeline(settings)
     # 预览流程不创建数据库或向量模型对象。
@@ -106,11 +109,11 @@ def build_services(settings: Settings | None = None) -> dict:
         pipeline, preview_pipeline, ingestion_pipeline,
         base_dir / "data", TENANT_ID, SECURITY_LEVEL,
     )
-    # 创建订单查询与固定流程服务。
-    orders = OrderService(TENANT_ID, data_file)
-    # 创建包含内存会话的综合 Agent 服务。
-    agent = AgentService(model, pipeline, filters, data_file)
-    # 创建独立基础课程演示服务。
-    lessons = LessonService(TENANT_ID, data_file)
+    # 创建订单查询与固定流程服务，统一使用当前配置的只读业务数据源。
+    orders = OrderService(TENANT_ID, data_file, business_store=business_store)
+    # 创建包含内存会话的综合 Agent 服务，复用同一套只读业务数据源。
+    agent = AgentService(model, pipeline, filters, data_file, business_store=business_store)
+    # 创建独立基础课程演示服务，同步支持业务数据源切换。
+    lessons = LessonService(TENANT_ID, data_file, business_store=business_store)
     # 使用普通字典保存应用需要的四个服务。
     return {"rag": rag, "orders": orders, "agent": agent, "lessons": lessons}
